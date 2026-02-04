@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>05 - Task Manager for LLM Agents</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --info: #60a5fa;
+            --border: #333;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--accent), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        header p {
+            color: var(--text-secondary);
+        }
+        
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .stat {
+            background: var(--bg-secondary);
+            padding: 15px 25px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 100px;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+        
+        .stat.pending .stat-value { color: var(--warning); }
+        .stat.in-progress .stat-value { color: var(--info); }
+        .stat.blocked .stat-value { color: var(--accent); }
+        .stat.completed .stat-value { color: var(--success); }
+        .stat.ready .stat-value { color: #a855f7; }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 900px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .panel {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .panel h2 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: var(--accent-hover);
+        }
+        
+        button.secondary {
+            background: var(--bg-tertiary);
+        }
+        
+        button.secondary:hover {
+            background: var(--border);
+        }
+        
+        button.small {
+            padding: 5px 10px;
+            font-size: 0.8rem;
+        }
+        
+        .button-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        /* Task List */
+        .task-filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-btn {
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: none;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        
+        .filter-btn:hover, .filter-btn.active {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .task-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .task-card {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border-left: 4px solid var(--border);
+        }
+        
+        .task-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .task-card.selected {
+            border-left-color: var(--accent);
+        }
+        
+        .task-card.pending { border-left-color: var(--warning); }
+        .task-card.in_progress { border-left-color: var(--info); }
+        .task-card.blocked { border-left-color: var(--accent); }
+        .task-card.completed { border-left-color: var(--success); }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        
+        .task-subject {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        
+        .task-status {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 10px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        .task-status.pending { background: var(--warning); color: #000; }
+        .task-status.in_progress { background: var(--info); color: #000; }
+        .task-status.blocked { background: var(--accent); color: #fff; }
+        .task-status.completed { background: var(--success); color: #000; }
+        
+        .task-meta {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        
+        .task-blockers {
+            margin-top: 5px;
+            font-size: 0.75rem;
+            color: var(--accent);
+        }
+        
+        /* Task Details */
+        .task-details {
+            display: none;
+        }
+        
+        .task-details.visible {
+            display: block;
+        }
+        
+        .detail-row {
+            display: flex;
+            margin-bottom: 10px;
+            align-items: flex-start;
+        }
+        
+        .detail-label {
+            width: 100px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        
+        .detail-value {
+            flex: 1;
+        }
+        
+        .detail-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        /* Dependency UI */
+        .dependency-section {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border);
+        }
+        
+        .dependency-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        .dependency-tag {
+            background: var(--bg-tertiary);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .dependency-tag .remove {
+            cursor: pointer;
+            color: var(--accent);
+        }
+        
+        /* Hydrate Panel */
+        .hydrate-panel {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+        
+        /* Log */
+        .log-panel {
+            margin-top: 20px;
+        }
+        
+        .log-entries {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+        
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-time {
+            color: var(--text-secondary);
+        }
+        
+        .log-success { color: var(--success); }
+        .log-error { color: var(--accent); }
+        .log-info { color: var(--info); }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+        
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Task Manager for LLM Agents</h1>
+            <p>Persistent task management with dependency tracking, running in Rust/WASM</p>
+        </header>
+        
+        <!-- Stats Bar -->
+        <div class="stats-bar" id="statsBar">
+            <div class="stat">
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat pending">
+                <div class="stat-value" id="statPending">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat in-progress">
+                <div class="stat-value" id="statInProgress">0</div>
+                <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat blocked">
+                <div class="stat-value" id="statBlocked">0</div>
+                <div class="stat-label">Blocked</div>
+            </div>
+            <div class="stat completed">
+                <div class="stat-value" id="statCompleted">0</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat ready">
+                <div class="stat-value" id="statReady">0</div>
+                <div class="stat-label">Ready</div>
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <!-- Left Panel: Create & List -->
+            <div class="left-panel">
+                <!-- Create Task -->
+                <div class="panel">
+                    <h2>Create Task</h2>
+                    <form id="createForm">
+                        <div class="form-group">
+                            <label>Subject</label>
+                            <input type="text" id="newSubject" placeholder="Task title..." required>
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="newDescription" placeholder="Detailed description..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Owner (optional)</label>
+                            <input type="text" id="newOwner" placeholder="agent-1">
+                        </div>
+                        <div class="form-group">
+                            <label>Sub-Agent (optional)</label>
+                            <input type="text" id="newSubAgent" placeholder="code-reviewer">
+                        </div>
+                        <button type="submit">Create Task</button>
+                    </form>
+                </div>
+                
+                <!-- Hydrate from Markdown -->
+                <div class="panel hydrate-panel">
+                    <h2>Import from Markdown</h2>
+                    <div class="form-group">
+                        <textarea id="hydrateMarkdown" placeholder="## Task Subject
+Description here
+- status: pending
+- owner: agent-1
+
+## Another Task
+Another description"></textarea>
+                    </div>
+                    <button id="hydrateBtn" class="secondary">Import Tasks</button>
+                </div>
+            </div>
+            
+            <!-- Right Panel: Task List & Details -->
+            <div class="right-panel">
+                <div class="panel">
+                    <h2>Tasks</h2>
+                    
+                    <!-- Filters -->
+                    <div class="task-filters">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="ready">Ready</button>
+                        <button class="filter-btn" data-filter="pending">Pending</button>
+                        <button class="filter-btn" data-filter="in_progress">In Progress</button>
+                        <button class="filter-btn" data-filter="blocked">Blocked</button>
+                        <button class="filter-btn" data-filter="completed">Completed</button>
+                    </div>
+                    
+                    <!-- Task List -->
+                    <div class="task-list" id="taskList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>No tasks yet. Create one to get started!</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Task Details -->
+                <div class="panel task-details" id="taskDetails">
+                    <h2>Task Details</h2>
+                    <div id="taskDetailsContent"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Activity Log -->
+        <div class="panel log-panel">
+            <h2>Activity Log</h2>
+            <div class="log-entries" id="logEntries"></div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { TaskManager } from './TaskManager.js';
+        
+        const manager = new TaskManager();
+        let currentFilter = 'all';
+        let selectedTaskId = null;
+        let allTasks = [];
+        
+        // =====================================================================
+        // Logging
+        // =====================================================================
+        
+        function log(message, type = 'info') {
+            const logEntries = document.getElementById('logEntries');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-time">${time}</span> ${message}`;
+            logEntries.insertBefore(entry, logEntries.firstChild);
+            
+            // Keep only last 50 entries
+            while (logEntries.children.length > 50) {
+                logEntries.removeChild(logEntries.lastChild);
+            }
+        }
+        
+        // =====================================================================
+        // Stats
+        // =====================================================================
+        
+        async function updateStats() {
+            try {
+                const stats = await manager.stats();
+                document.getElementById('statTotal').textContent = stats.total;
+                document.getElementById('statPending').textContent = stats.pending;
+                document.getElementById('statInProgress').textContent = stats.in_progress;
+                document.getElementById('statBlocked').textContent = stats.blocked;
+                document.getElementById('statCompleted').textContent = stats.completed;
+                document.getElementById('statReady').textContent = stats.ready;
+            } catch (e) {
+                console.error('Failed to update stats:', e);
+            }
+        }
+        
+        // =====================================================================
+        // Task List
+        // =====================================================================
+        
+        async function loadTasks() {
+            try {
+                let filter = undefined;
+                
+                if (currentFilter === 'ready') {
+                    filter = { ready_only: true };
+                } else if (currentFilter !== 'all') {
+                    filter = { status: currentFilter };
+                }
+                
+                allTasks = await manager.list(filter);
+                renderTaskList();
+            } catch (e) {
+                log(`Error loading tasks: ${e.message}`, 'error');
+            }
+        }
+        
+        function renderTaskList() {
+            const container = document.getElementById('taskList');
+            
+            if (allTasks.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>No tasks match the current filter.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = allTasks.map(task => `
+                <div class="task-card ${task.status} ${task.id === selectedTaskId ? 'selected' : ''}" 
+                     data-id="${task.id}">
+                    <div class="task-header">
+                        <div class="task-subject">${escapeHtml(task.subject)}</div>
+                        <span class="task-status ${task.status}">${formatStatus(task.status)}</span>
+                    </div>
+                    <div class="task-meta">
+                        ${task.owner ? `👤 ${escapeHtml(task.owner)}` : ''}
+                        ${task.sub_agent ? `🤖 ${escapeHtml(task.sub_agent)}` : ''}
+                        📅 ${formatDate(task.created_at)}
+                    </div>
+                    ${task.blocker_count > 0 ? `
+                        <div class="task-blockers">⛔ Blocked by ${task.blocker_count} task(s)</div>
+                    ` : ''}
+                </div>
+            `).join('');
+            
+            // Add click handlers
+            container.querySelectorAll('.task-card').forEach(card => {
+                card.addEventListener('click', () => selectTask(card.dataset.id));
+            });
+        }
+        
+        // =====================================================================
+        // Task Details
+        // =====================================================================
+        
+        async function selectTask(taskId) {
+            selectedTaskId = taskId;
+            renderTaskList();
+            
+            try {
+                const task = await manager.get(taskId);
+                showTaskDetails(task);
+            } catch (e) {
+                log(`Error loading task: ${e.message}`, 'error');
+            }
+        }
+        
+        function showTaskDetails(task) {
+            const panel = document.getElementById('taskDetails');
+            const content = document.getElementById('taskDetailsContent');
+            
+            panel.classList.add('visible');
+            
+            content.innerHTML = `
+                <div class="detail-row">
+                    <div class="detail-label">ID:</div>
+                    <div class="detail-value" style="font-family: monospace; font-size: 0.8rem;">${task.id}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Subject:</div>
+                    <div class="detail-value"><strong>${escapeHtml(task.subject)}</strong></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Status:</div>
+                    <div class="detail-value">
+                        <select id="detailStatus">
+                            <option value="pending" ${task.status === 'pending' ? 'selected' : ''}>Pending</option>
+                            <option value="in_progress" ${task.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                            <option value="blocked" ${task.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                            <option value="completed" ${task.status === 'completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Description:</div>
+                    <div class="detail-value">${escapeHtml(task.description) || '<em>No description</em>'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Owner:</div>
+                    <div class="detail-value">
+                        <input type="text" id="detailOwner" value="${escapeHtml(task.owner || '')}" placeholder="Assign owner">
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Sub-Agent:</div>
+                    <div class="detail-value">
+                        <input type="text" id="detailSubAgent" value="${escapeHtml(task.sub_agent || '')}" placeholder="Assign sub-agent">
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Created:</div>
+                    <div class="detail-value">${formatDate(task.created_at)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Updated:</div>
+                    <div class="detail-value">${formatDate(task.updated_at)}</div>
+                </div>
+                
+                <!-- Dependencies -->
+                <div class="dependency-section">
+                    <h3 style="font-size: 1rem; margin-bottom: 10px;">Dependencies</h3>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="color: var(--text-secondary); font-size: 0.9rem;">Blocked By:</label>
+                        <div class="dependency-list" id="blockedByList">
+                            ${task.blocked_by.length === 0 ? '<em style="color: var(--text-secondary)">None</em>' : 
+                              task.blocked_by.map(id => `
+                                <span class="dependency-tag">
+                                    ${id.substring(0, 20)}...
+                                    <span class="remove" data-blocker="${id}">×</span>
+                                </span>
+                              `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label style="color: var(--text-secondary); font-size: 0.9rem;">Blocks:</label>
+                        <div class="dependency-list" id="blocksList">
+                            ${task.blocks.length === 0 ? '<em style="color: var(--text-secondary)">None</em>' :
+                              task.blocks.map(id => `
+                                <span class="dependency-tag">${id.substring(0, 20)}...</span>
+                              `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <label style="color: var(--text-secondary); font-size: 0.9rem;">Add Blocker:</label>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <select id="addBlockerSelect" style="flex: 1;">
+                                <option value="">Select a task...</option>
+                            </select>
+                            <button id="addBlockerBtn" class="small secondary">Add</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="detail-actions">
+                    <button id="saveChangesBtn">Save Changes</button>
+                    <button id="startTaskBtn" class="secondary" ${task.status !== 'pending' ? 'disabled' : ''}>Start</button>
+                    <button id="completeTaskBtn" class="secondary" ${task.status === 'completed' ? 'disabled' : ''}>Complete</button>
+                    <button id="deleteTaskBtn" class="secondary" style="background: var(--accent);">Delete</button>
+                </div>
+            `;
+            
+            // Populate blocker select
+            const blockerSelect = document.getElementById('addBlockerSelect');
+            allTasks.forEach(t => {
+                if (t.id !== task.id && !task.blocked_by.includes(t.id)) {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = t.subject;
+                    blockerSelect.appendChild(opt);
+                }
+            });
+            
+            // Event handlers
+            document.getElementById('saveChangesBtn').addEventListener('click', () => saveTaskChanges(task.id));
+            document.getElementById('startTaskBtn').addEventListener('click', () => startTask(task.id));
+            document.getElementById('completeTaskBtn').addEventListener('click', () => completeTask(task.id));
+            document.getElementById('deleteTaskBtn').addEventListener('click', () => deleteTask(task.id));
+            document.getElementById('addBlockerBtn').addEventListener('click', () => addBlocker(task.id));
+            
+            // Remove blocker handlers
+            content.querySelectorAll('.dependency-tag .remove').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeBlocker(task.id, btn.dataset.blocker);
+                });
+            });
+        }
+        
+        async function saveTaskChanges(taskId) {
+            const updates = {
+                status: document.getElementById('detailStatus').value,
+                owner: document.getElementById('detailOwner').value || null,
+                sub_agent: document.getElementById('detailSubAgent').value || null,
+            };
+            
+            try {
+                await manager.update(taskId, updates);
+                log(`Updated task`, 'success');
+                await refresh();
+                await selectTask(taskId);
+            } catch (e) {
+                log(`Error updating task: ${e.message}`, 'error');
+            }
+        }
+        
+        async function startTask(taskId) {
+            try {
+                await manager.start(taskId);
+                log(`Started task`, 'success');
+                await refresh();
+                await selectTask(taskId);
+            } catch (e) {
+                log(`Error starting task: ${e.message}`, 'error');
+            }
+        }
+        
+        async function completeTask(taskId) {
+            try {
+                await manager.complete(taskId);
+                log(`Completed task (dependents may have been unblocked)`, 'success');
+                await refresh();
+                await selectTask(taskId);
+            } catch (e) {
+                log(`Error completing task: ${e.message}`, 'error');
+            }
+        }
+        
+        async function deleteTask(taskId) {
+            if (!confirm('Are you sure you want to delete this task?')) return;
+            
+            try {
+                await manager.delete(taskId);
+                log(`Deleted task`, 'success');
+                selectedTaskId = null;
+                document.getElementById('taskDetails').classList.remove('visible');
+                await refresh();
+            } catch (e) {
+                log(`Error deleting task: ${e.message}`, 'error');
+            }
+        }
+        
+        async function addBlocker(taskId) {
+            const blockerId = document.getElementById('addBlockerSelect').value;
+            if (!blockerId) return;
+            
+            try {
+                await manager.block(taskId, blockerId);
+                log(`Added blocker`, 'success');
+                await refresh();
+                await selectTask(taskId);
+            } catch (e) {
+                log(`Error adding blocker: ${e.message}`, 'error');
+            }
+        }
+        
+        async function removeBlocker(taskId, blockerId) {
+            try {
+                await manager.unblock(taskId, blockerId);
+                log(`Removed blocker`, 'success');
+                await refresh();
+                await selectTask(taskId);
+            } catch (e) {
+                log(`Error removing blocker: ${e.message}`, 'error');
+            }
+        }
+        
+        // =====================================================================
+        // Create Task
+        // =====================================================================
+        
+        document.getElementById('createForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const subject = document.getElementById('newSubject').value.trim();
+            const description = document.getElementById('newDescription').value.trim();
+            const owner = document.getElementById('newOwner').value.trim();
+            const subAgent = document.getElementById('newSubAgent').value.trim();
+            
+            if (!subject) {
+                log('Subject is required', 'error');
+                return;
+            }
+            
+            try {
+                const metadata = {};
+                if (owner) metadata.initial_owner = owner;
+                if (subAgent) metadata.initial_sub_agent = subAgent;
+                
+                const task = await manager.create(subject, description, 
+                    Object.keys(metadata).length > 0 ? metadata : undefined);
+                
+                // Set owner and sub_agent if provided
+                if (owner || subAgent) {
+                    await manager.update(task.id, { owner: owner || null, sub_agent: subAgent || null });
+                }
+                
+                log(`Created task: ${subject}`, 'success');
+                
+                // Clear form
+                document.getElementById('newSubject').value = '';
+                document.getElementById('newDescription').value = '';
+                document.getElementById('newOwner').value = '';
+                document.getElementById('newSubAgent').value = '';
+                
+                await refresh();
+            } catch (e) {
+                log(`Error creating task: ${e.message}`, 'error');
+            }
+        });
+        
+        // =====================================================================
+        // Hydrate from Markdown
+        // =====================================================================
+        
+        document.getElementById('hydrateBtn').addEventListener('click', async () => {
+            const markdown = document.getElementById('hydrateMarkdown').value.trim();
+            if (!markdown) {
+                log('Enter markdown to import', 'error');
+                return;
+            }
+            
+            try {
+                const tasks = await manager.hydrate(markdown);
+                log(`Imported ${tasks.length} tasks from markdown`, 'success');
+                document.getElementById('hydrateMarkdown').value = '';
+                await refresh();
+            } catch (e) {
+                log(`Error importing: ${e.message}`, 'error');
+            }
+        });
+        
+        // =====================================================================
+        // Filters
+        // =====================================================================
+        
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                loadTasks();
+            });
+        });
+        
+        // =====================================================================
+        // Helpers
+        // =====================================================================
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                      .replace(/"/g, '&quot;');
+        }
+        
+        function formatStatus(status) {
+            return status.replace('_', ' ');
+        }
+        
+        function formatDate(timestamp) {
+            return new Date(timestamp).toLocaleString();
+        }
+        
+        async function refresh() {
+            await updateStats();
+            await loadTasks();
+        }
+        
+        // =====================================================================
+        // Initialize
+        // =====================================================================
+        
+        async function init() {
+            try {
+                await manager.ready();
+                log('Task Manager initialized', 'success');
+                await refresh();
+            } catch (e) {
+                log(`Initialization failed: ${e.message}`, 'error');
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

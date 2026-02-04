@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KV Database - Rust WASM Worker</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        header h1 {
+            font-size: 2rem;
+            color: #4fc3f7;
+            margin-bottom: 0.5rem;
+        }
+        
+        header p {
+            color: #888;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+        }
+        
+        .status-dot.ready { background: #4caf50; }
+        .status-dot.loading { background: #ff9800; animation: pulse 1s infinite; }
+        .status-dot.error { background: #f44336; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .card {
+            background: #1e1e30;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .card h2 {
+            font-size: 1.1rem;
+            color: #4fc3f7;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        input, textarea {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #12121f;
+            color: #e0e0e0;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+        
+        button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
+            color: #000;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+            white-space: nowrap;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: scale(1.02);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background: #333;
+            color: #e0e0e0;
+        }
+        
+        button.danger {
+            background: #c62828;
+            color: #fff;
+        }
+        
+        .result {
+            padding: 1rem;
+            background: #12121f;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+            color: #4caf50;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .result.error {
+            color: #f44336;
+        }
+        
+        .entries-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .entry-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: #12121f;
+            border-radius: 6px;
+        }
+        
+        .entry-key {
+            font-weight: 600;
+            color: #4fc3f7;
+            min-width: 100px;
+        }
+        
+        .entry-value {
+            flex: 1;
+            color: #ccc;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .entry-actions {
+            display: flex;
+            gap: 0.25rem;
+        }
+        
+        .entry-actions button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-item {
+            padding: 0.5rem 1rem;
+            background: #12121f;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #4fc3f7;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        
+        .info {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #1e1e30;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .info code {
+            background: #12121f;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            color: #4fc3f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🗄️ KV Database</h1>
+            <p>IndexedDB + Rust WASM Hybrid Architecture</p>
+        </header>
+        
+        <div class="status">
+            <div id="statusDot" class="status-dot loading"></div>
+            <span id="statusText">Loading WASM module...</span>
+        </div>
+        
+        <!-- Stats -->
+        <div class="card">
+            <h2>📊 Store Statistics</h2>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="statCount">0</div>
+                    <div class="stat-label">Entries</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="statSize">0</div>
+                    <div class="stat-label">Bytes</div>
+                </div>
+            </div>
+            <button id="refreshStatsBtn" disabled>🔄 Refresh Stats</button>
+        </div>
+        
+        <!-- Set Value -->
+        <div class="card">
+            <h2>➕ Set Value</h2>
+            <div class="input-group">
+                <input type="text" id="setKey" placeholder="Key" value="user:1">
+            </div>
+            <div class="input-group">
+                <textarea id="setValue" placeholder="Value (JSON)">{"name": "Alice", "email": "alice@example.com"}</textarea>
+            </div>
+            <div class="input-group">
+                <button id="setBtn" disabled>Set</button>
+            </div>
+            <div id="setResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- Get Value -->
+        <div class="card">
+            <h2>🔍 Get Value</h2>
+            <div class="input-group">
+                <input type="text" id="getKey" placeholder="Key">
+                <button id="getBtn" disabled>Get</button>
+            </div>
+            <div id="getResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- Search -->
+        <div class="card">
+            <h2>🔎 Search (Rust-powered)</h2>
+            <div class="input-group">
+                <input type="text" id="searchQuery" placeholder="Search in keys and values...">
+                <button id="searchBtn" disabled>Search</button>
+            </div>
+            <div id="searchResult" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- All Entries -->
+        <div class="card">
+            <h2>📋 All Entries</h2>
+            <div class="input-group">
+                <button id="listBtn" disabled>List All</button>
+                <button id="clearBtn" class="danger" disabled>Clear All</button>
+            </div>
+            <div id="entriesList" class="entries-list"></div>
+        </div>
+        
+        <div class="info">
+            <strong>Hybrid Architecture:</strong><br><br>
+            • <code>JavaScript</code> handles IndexedDB operations (callbacks, transactions)<br>
+            • <code>Rust/WASM</code> handles validation, search, and data transformation<br><br>
+            This combines the strengths of both languages!
+        </div>
+    </div>
+
+    <script type="module">
+        import { KVDatabase } from './KVDatabase.js';
+        
+        // Create database instance
+        const db = new KVDatabase('demo-db', 'demo-store');
+        
+        // DOM Elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        
+        // Wait for worker to be ready
+        async function init() {
+            try {
+                await db._ready();
+                statusDot.className = 'status-dot ready';
+                statusText.textContent = 'Ready';
+                enableButtons();
+                await refreshStats();
+                await listEntries();
+            } catch (error) {
+                statusDot.className = 'status-dot error';
+                statusText.textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        function enableButtons() {
+            document.querySelectorAll('button').forEach(btn => btn.disabled = false);
+        }
+        
+        function showResult(id, text, isError = false) {
+            const el = document.getElementById(id);
+            el.style.display = 'block';
+            el.textContent = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
+            el.className = isError ? 'result error' : 'result';
+        }
+        
+        async function refreshStats() {
+            try {
+                const keys = await db.keys();
+                document.getElementById('statCount').textContent = keys.length;
+                
+                // Estimate size
+                let totalSize = 0;
+                for (const key of keys) {
+                    const value = await db.get(key);
+                    totalSize += key.length + JSON.stringify(value).length;
+                }
+                document.getElementById('statSize').textContent = totalSize;
+            } catch (e) {
+                console.error('Stats error:', e);
+            }
+        }
+        
+        async function listEntries() {
+            const list = document.getElementById('entriesList');
+            list.innerHTML = '';
+            
+            try {
+                const keys = await db.keys();
+                
+                if (keys.length === 0) {
+                    list.innerHTML = '<div style="color: #888; padding: 1rem;">No entries yet</div>';
+                    return;
+                }
+                
+                for (const key of keys) {
+                    const value = await db.get(key);
+                    const item = document.createElement('div');
+                    item.className = 'entry-item';
+                    item.innerHTML = `
+                        <span class="entry-key">${key}</span>
+                        <span class="entry-value">${JSON.stringify(value)}</span>
+                        <div class="entry-actions">
+                            <button class="secondary" onclick="loadEntry('${key}')">Load</button>
+                            <button class="danger" onclick="deleteEntry('${key}')">Delete</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                }
+            } catch (e) {
+                list.innerHTML = `<div class="result error">${e.message}</div>`;
+            }
+        }
+        
+        // Global functions for inline handlers
+        window.loadEntry = async (key) => {
+            document.getElementById('getKey').value = key;
+            const value = await db.get(key);
+            showResult('getResult', value);
+        };
+        
+        window.deleteEntry = async (key) => {
+            if (confirm(`Delete "${key}"?`)) {
+                await db.remove(key);
+                await refreshStats();
+                await listEntries();
+            }
+        };
+        
+        // Event handlers
+        document.getElementById('setBtn').onclick = async () => {
+            const key = document.getElementById('setKey').value;
+            const valueStr = document.getElementById('setValue').value;
+            
+            try {
+                const value = JSON.parse(valueStr);
+                await db.set(key, value);
+                showResult('setResult', `✓ Saved "${key}"`);
+                await refreshStats();
+                await listEntries();
+            } catch (e) {
+                showResult('setResult', e.message, true);
+            }
+        };
+        
+        document.getElementById('getBtn').onclick = async () => {
+            const key = document.getElementById('getKey').value;
+            try {
+                const value = await db.get(key);
+                if (value === undefined) {
+                    showResult('getResult', `Key "${key}" not found`, true);
+                } else {
+                    showResult('getResult', value);
+                }
+            } catch (e) {
+                showResult('getResult', e.message, true);
+            }
+        };
+        
+        document.getElementById('searchBtn').onclick = async () => {
+            const query = document.getElementById('searchQuery').value;
+            try {
+                const results = await db.find(query);
+                const count = Object.keys(results).length;
+                showResult('searchResult', `Found ${count} matches:\n\n${JSON.stringify(results, null, 2)}`);
+            } catch (e) {
+                showResult('searchResult', e.message, true);
+            }
+        };
+        
+        document.getElementById('listBtn').onclick = listEntries;
+        document.getElementById('refreshStatsBtn').onclick = refreshStats;
+        
+        document.getElementById('clearBtn').onclick = async () => {
+            if (confirm('Clear all entries?')) {
+                await db.clear();
+                await refreshStats();
+                await listEntries();
+            }
+        };
+        
+        // Initialize
+        init();
+    </script>
+</body>
+</html>

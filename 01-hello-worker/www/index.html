@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>01 - Hello Worker (Rust WASM)</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        header h1 {
+            font-size: 2rem;
+            color: #4fc3f7;
+            margin-bottom: 0.5rem;
+        }
+        
+        header p {
+            color: #888;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+        }
+        
+        .status-dot.ready { background: #4caf50; }
+        .status-dot.loading { background: #ff9800; animation: pulse 1s infinite; }
+        .status-dot.error { background: #f44336; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .card {
+            background: #1e1e30;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .card h2 {
+            font-size: 1.1rem;
+            color: #4fc3f7;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        input {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #12121f;
+            color: #e0e0e0;
+            font-size: 1rem;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+        
+        button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
+            color: #000;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: scale(1.02);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            padding: 1rem;
+            background: #12121f;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+            color: #4caf50;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .result.error {
+            color: #f44336;
+        }
+        
+        .info {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #1e1e30;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #888;
+        }
+        
+        .info code {
+            background: #12121f;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            color: #4fc3f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🦀 Hello Worker</h1>
+            <p>Rust/WASM running in a Web Worker</p>
+        </header>
+        
+        <div class="status">
+            <div id="statusDot" class="status-dot loading"></div>
+            <span id="statusText">Loading WASM module...</span>
+        </div>
+        
+        <!-- Greet -->
+        <div class="card">
+            <h2>👋 Greet</h2>
+            <div class="input-group">
+                <input type="text" id="greetInput" placeholder="Enter your name" value="World">
+                <button id="greetBtn" disabled>Greet</button>
+            </div>
+            <div id="greetResult" class="result">Result will appear here...</div>
+        </div>
+        
+        <!-- Add Numbers -->
+        <div class="card">
+            <h2>➕ Add Numbers</h2>
+            <div class="input-group">
+                <input type="number" id="addA" placeholder="First number" value="42">
+                <input type="number" id="addB" placeholder="Second number" value="58">
+                <button id="addBtn" disabled>Add</button>
+            </div>
+            <div id="addResult" class="result">Result will appear here...</div>
+        </div>
+        
+        <!-- Reverse String -->
+        <div class="card">
+            <h2>🔄 Reverse String</h2>
+            <div class="input-group">
+                <input type="text" id="reverseInput" placeholder="Enter text to reverse" value="Hello, WASM!">
+                <button id="reverseBtn" disabled>Reverse</button>
+            </div>
+            <div id="reverseResult" class="result">Result will appear here...</div>
+        </div>
+        
+        <!-- Count Words -->
+        <div class="card">
+            <h2>📝 Count Words</h2>
+            <div class="input-group">
+                <input type="text" id="wordsInput" placeholder="Enter text" value="Rust WASM in Web Workers is awesome!">
+                <button id="wordsBtn" disabled>Count</button>
+            </div>
+            <div id="wordsResult" class="result">Result will appear here...</div>
+        </div>
+        
+        <!-- Is Prime -->
+        <div class="card">
+            <h2>🔢 Is Prime?</h2>
+            <div class="input-group">
+                <input type="number" id="primeInput" placeholder="Enter a number" value="17">
+                <button id="primeBtn" disabled>Check</button>
+            </div>
+            <div id="primeResult" class="result">Result will appear here...</div>
+        </div>
+        
+        <div class="info">
+            <strong>How it works:</strong><br><br>
+            1. The <code>worker.js</code> runs in a separate thread<br>
+            2. It loads the Rust/WASM module (<code>hello_worker.wasm</code>)<br>
+            3. Main thread sends messages via <code>postMessage()</code><br>
+            4. Worker calls Rust functions and sends results back<br><br>
+            Open the browser console to see logs from both threads!
+        </div>
+    </div>
+
+    <script type="module">
+        // State
+        let worker = null;
+        let isReady = false;
+        let pendingRequests = new Map();
+        let nextId = 1;
+        
+        // DOM Elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        
+        // Initialize worker
+        function initWorker() {
+            worker = new Worker('./worker.js', { type: 'module' });
+            
+            worker.onmessage = (event) => {
+                const { id, type, result, error } = event.data;
+                
+                console.log('[Main] Worker message:', event.data);
+                
+                if (type === 'ready') {
+                    isReady = true;
+                    statusDot.className = 'status-dot ready';
+                    statusText.textContent = 'WASM module ready!';
+                    enableButtons();
+                    return;
+                }
+                
+                if (type === 'error' && !id) {
+                    statusDot.className = 'status-dot error';
+                    statusText.textContent = 'Error: ' + error;
+                    return;
+                }
+                
+                // Handle response to a request
+                if (id && pendingRequests.has(id)) {
+                    const { resolve, reject } = pendingRequests.get(id);
+                    pendingRequests.delete(id);
+                    
+                    if (type === 'error') {
+                        reject(new Error(error));
+                    } else {
+                        resolve(result);
+                    }
+                }
+            };
+            
+            worker.onerror = (error) => {
+                console.error('[Main] Worker error:', error);
+                statusDot.className = 'status-dot error';
+                statusText.textContent = 'Worker error!';
+            };
+        }
+        
+        // Send message to worker and wait for response
+        function callWorker(type, payload) {
+            return new Promise((resolve, reject) => {
+                const id = nextId++;
+                pendingRequests.set(id, { resolve, reject });
+                worker.postMessage({ id, type, payload });
+            });
+        }
+        
+        // Enable all buttons
+        function enableButtons() {
+            document.querySelectorAll('button').forEach(btn => btn.disabled = false);
+        }
+        
+        // Setup event handlers
+        function setupHandlers() {
+            // Greet
+            document.getElementById('greetBtn').onclick = async () => {
+                const name = document.getElementById('greetInput').value;
+                try {
+                    const result = await callWorker('greet', { name });
+                    document.getElementById('greetResult').textContent = result;
+                    document.getElementById('greetResult').className = 'result';
+                } catch (e) {
+                    document.getElementById('greetResult').textContent = 'Error: ' + e.message;
+                    document.getElementById('greetResult').className = 'result error';
+                }
+            };
+            
+            // Add
+            document.getElementById('addBtn').onclick = async () => {
+                const a = parseInt(document.getElementById('addA').value);
+                const b = parseInt(document.getElementById('addB').value);
+                try {
+                    const result = await callWorker('add', { a, b });
+                    document.getElementById('addResult').textContent = `${a} + ${b} = ${result}`;
+                    document.getElementById('addResult').className = 'result';
+                } catch (e) {
+                    document.getElementById('addResult').textContent = 'Error: ' + e.message;
+                    document.getElementById('addResult').className = 'result error';
+                }
+            };
+            
+            // Reverse
+            document.getElementById('reverseBtn').onclick = async () => {
+                const text = document.getElementById('reverseInput').value;
+                try {
+                    const result = await callWorker('reverse', { text });
+                    document.getElementById('reverseResult').textContent = `"${text}" → "${result}"`;
+                    document.getElementById('reverseResult').className = 'result';
+                } catch (e) {
+                    document.getElementById('reverseResult').textContent = 'Error: ' + e.message;
+                    document.getElementById('reverseResult').className = 'result error';
+                }
+            };
+            
+            // Count words
+            document.getElementById('wordsBtn').onclick = async () => {
+                const text = document.getElementById('wordsInput').value;
+                try {
+                    const result = await callWorker('count_words', { text });
+                    document.getElementById('wordsResult').textContent = `Word count: ${result}`;
+                    document.getElementById('wordsResult').className = 'result';
+                } catch (e) {
+                    document.getElementById('wordsResult').textContent = 'Error: ' + e.message;
+                    document.getElementById('wordsResult').className = 'result error';
+                }
+            };
+            
+            // Is prime
+            document.getElementById('primeBtn').onclick = async () => {
+                const number = parseInt(document.getElementById('primeInput').value);
+                try {
+                    const result = await callWorker('is_prime', { number });
+                    document.getElementById('primeResult').textContent = 
+                        `${number} is ${result ? '' : 'NOT '}a prime number`;
+                    document.getElementById('primeResult').className = 'result';
+                } catch (e) {
+                    document.getElementById('primeResult').textContent = 'Error: ' + e.message;
+                    document.getElementById('primeResult').className = 'result error';
+                }
+            };
+        }
+        
+        // Initialize
+        setupHandlers();
+        initWorker();
+    </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+[package]
+name = "hello-worker"
+version = "0.1.0"
+edition = "2021"
+description = "Basic Rust WASM module running in a Web Worker"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["console"]
+
+[features]
+default = ["console_error_panic_hook"]
+
+[profile.release]
+opt-level = "s"
+lto = true

@@ -1,4 +1,5 @@
 use crate::fs::VirtualFileSystem;
+use crate::models::ShellResult;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -32,7 +33,6 @@ impl Shell {
         }
     }
 
-    /// Resolves a path string (relative or absolute) to a vector of components
     fn resolve_path(&self, path_str: &str) -> Vec<String> {
         let mut path_stack = if path_str.starts_with('/') {
             Vec::new()
@@ -52,25 +52,26 @@ impl Shell {
         path_stack
     }
 
+    /// Returns a JSON-serialized ShellResult
     pub fn execute(&mut self, cmd_line: &str) -> String {
         let parts: Vec<&str> = cmd_line.trim().split_whitespace().collect();
         if parts.is_empty() {
-            return "".to_string();
+            return serde_json::to_string(&ShellResult::ok("".to_string(), false)).unwrap();
         }
 
         let command = parts[0];
         let args = &parts[1..];
 
-        match command {
-            "pwd" => self.get_pwd(),
+        let result = match command {
+            "pwd" => ShellResult::ok(self.get_pwd(), false),
             "ls" => {
                 let target = if args.is_empty() { "." } else { args[0] };
                 let resolved = self.resolve_path(target);
                 let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
 
                 match self.fs.list_dir(path_refs) {
-                    Ok(entries) => entries.join("\n"),
-                    Err(e) => format!("ls: {}", e),
+                    Ok(entries) => ShellResult::ok(entries.join("\n"), false),
+                    Err(e) => ShellResult::error(format!("ls: {}", e)),
                 }
             }
             "cd" => {
@@ -78,51 +79,49 @@ impl Shell {
                 let resolved = self.resolve_path(target);
                 let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
 
-                // Verify it exists and is a dir
                 match self.fs.list_dir(path_refs) {
                     Ok(_) => {
                         self.cwd = resolved;
-                        "".to_string()
+                        ShellResult::ok("".to_string(), false)
                     }
-                    Err(e) => format!("cd: {}", e),
+                    Err(e) => ShellResult::error(format!("cd: {}", e)),
                 }
             }
             "mkdir" => {
                 if args.is_empty() {
-                    return "mkdir: missing operand".to_string();
-                }
-                let resolved = self.resolve_path(args[0]);
-                let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
+                    ShellResult::error("mkdir: missing operand".to_string())
+                } else {
+                    let resolved = self.resolve_path(args[0]);
+                    let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
 
-                match self.fs.mkdir(path_refs) {
-                    Ok(_) => "".to_string(),
-                    Err(e) => format!("mkdir: {}", e),
+                    match self.fs.mkdir(path_refs) {
+                        Ok(_) => ShellResult::ok("".to_string(), true),
+                        Err(e) => ShellResult::error(format!("mkdir: {}", e)),
+                    }
                 }
             }
             "touch" => {
                 if args.is_empty() {
-                    return "touch: missing operand".to_string();
-                }
-                let resolved = self.resolve_path(args[0]);
-                let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
+                    ShellResult::error("touch: missing operand".to_string())
+                } else {
+                    let resolved = self.resolve_path(args[0]);
+                    let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
 
-                // Only create if not exists, but for now strict write_file is fine
-                // Actually touch should just update timestamp or create empty.
-                // Our write_file creates/overwrites.
-                // Let's check if it exists first?
-                // For simplicity: just overwrite with empty if strictly new, or keep content.
-                // Simpler: Just write empty string.
-                match self.fs.write_file(path_refs, "".to_string()) {
-                    Ok(_) => "".to_string(),
-                    Err(e) => format!("touch: {}", e),
+                    // Logic: If file exists, keep content. If not, create empty.
+                    // Since write_file overwrites, we need check existence first or use a smarter method.
+                    // For now, let's try reading. If it fails (not found), we write empty.
+                    // If it succeeds, we essentially do nothing (touching timestamp not implemented yet).
+                    if self.fs.read_file(path_refs.clone()).is_ok() {
+                        ShellResult::ok("".to_string(), false)
+                    } else {
+                        match self.fs.write_file(path_refs, "".to_string()) {
+                            Ok(_) => ShellResult::ok("".to_string(), true),
+                            Err(e) => ShellResult::error(format!("touch: {}", e)),
+                        }
+                    }
                 }
             }
             "echo" => {
-                // Simple echo: join args.
-                // TODO: Support > redirection later.
-                // For now, if contains ">", handle it manually here?
-                // A real parser would handle this before execution.
-                // Let's do a quick hack for ">" support.
                 if let Some(pos) = args.iter().position(|&x| x == ">") {
                     let content = args[0..pos].join(" ");
                     let file_path = args.get(pos + 1);
@@ -131,46 +130,68 @@ impl Shell {
                         let resolved = self.resolve_path(path);
                         let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
                         match self.fs.write_file(path_refs, content) {
-                            Ok(_) => "".to_string(),
-                            Err(e) => format!("echo: {}", e),
+                            Ok(_) => ShellResult::ok("".to_string(), true),
+                            Err(e) => ShellResult::error(format!("echo: {}", e)),
                         }
                     } else {
-                        "echo: syntax error near >".to_string()
+                        ShellResult::error("echo: syntax error near >".to_string())
                     }
                 } else {
-                    args.join(" ")
+                    ShellResult::ok(args.join(" "), false)
                 }
             }
             "cat" => {
                 if args.is_empty() {
-                    return "cat: missing operand".to_string();
-                }
-                let resolved = self.resolve_path(args[0]);
-                let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
+                    ShellResult::error("cat: missing operand".to_string())
+                } else {
+                    let resolved = self.resolve_path(args[0]);
+                    let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
 
-                match self.fs.read_file(path_refs) {
-                    Ok(content) => content,
-                    Err(e) => format!("cat: {}", e),
+                    match self.fs.read_file(path_refs) {
+                        Ok(content) => ShellResult::ok(content, false),
+                        Err(e) => ShellResult::error(format!("cat: {}", e)),
+                    }
                 }
             }
             "rm" => {
                 if args.is_empty() {
-                    return "rm: missing operand".to_string();
-                }
-                let resolved = self.resolve_path(args[0]);
-                let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
+                    ShellResult::error("rm: missing operand".to_string())
+                } else {
+                    let resolved = self.resolve_path(args[0]);
+                    let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
 
-                match self.fs.delete(path_refs) {
-                    Ok(_) => "".to_string(),
-                    Err(e) => format!("rm: {}", e),
+                    match self.fs.delete(path_refs) {
+                        Ok(_) => ShellResult::ok("".to_string(), true),
+                        Err(e) => ShellResult::error(format!("rm: {}", e)),
+                    }
                 }
             }
-            _ => format!("command not found: {}", command),
-        }
+            _ => ShellResult::error(format!("command not found: {}", command)),
+        };
+
+        serde_json::to_string(&result).unwrap_or_else(|_| {
+            r#"{"stdout":"","stderr":"Serialization error","fs_changed":false}"#.to_string()
+        })
     }
 
-    // Helper to export the FS state for the UI
     pub fn get_fs_json(&self) -> String {
         serde_json::to_string(&self.fs).unwrap_or("{}".to_string())
+    }
+
+    /// Load files from a JSON string (e.g. from GitHub API)
+    pub fn load_files(&mut self, files_json: &str) -> String {
+        match serde_json::from_str::<Vec<crate::models::VirtualFile>>(files_json) {
+            Ok(files) => {
+                self.fs.load_files(files);
+                serde_json::to_string(&ShellResult::ok("Files loaded".to_string(), true)).unwrap()
+            }
+            Err(e) => {
+                serde_json::to_string(&ShellResult::error(format!("JSON parse error: {}", e)))
+                    .unwrap_or_else(|_| {
+                        r#"{"stdout":"","stderr":"Serialization error","fs_changed":false}"#
+                            .to_string()
+                    })
+            }
+        }
     }
 }

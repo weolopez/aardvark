@@ -122,6 +122,35 @@ pub fn add_to_history(history_json: &str, role: &str, text: &str) -> String {
 }
 ```
 
+## Coding Agent Goal Alignment
+
+This project proves that the **LLM communication layer** can run entirely from Rust/WASM inside a Web Worker — the core requirement for a browser-based coding agent.
+
+| Coding Agent Requirement | How This Project Addresses It |
+|--------------------------|-------------------------------|
+| LLM API calls | `call_gemini_api()` makes HTTP requests from WASM via `web-sys` fetch |
+| Conversation history | `add_to_history()` manages multi-turn message arrays identical to [`AgentState.messages`](../agent/types.ts:139) |
+| JSON request/response | Serde serialization mirrors the TypeScript agent's message format |
+| API key management | localStorage-based key storage, matching browser security constraints |
+| Error handling | Typed error codes map to the agent's error reporting pattern |
+
+### Mapping to TypeScript Agent
+
+| TypeScript Agent | Rust/WASM Equivalent |
+|------------------|---------------------|
+| [`streamSimple()`](../agent/agent-loop.ts:10) | `call_gemini_api()` — non-streaming for now |
+| [`AgentMessage`](../agent/types.ts:129) history array | `add_to_history()` conversation history |
+| [`AgentLoopConfig.model`](../agent/types.ts:23) | `model` parameter in API URL |
+| Provider API key resolution | `validate_api_key()` + localStorage |
+
+### What's Still Needed
+
+- **Streaming responses** — Currently uses `generateContent` (non-streaming); needs `streamGenerateContent` for real-time token output
+- **Multi-provider support** — Only Gemini; the TypeScript agent supports Anthropic, OpenAI, and 15+ providers
+- **Token counting** — No token usage tracking yet
+
+**Status: ✅ Complete** — LLM communication from WASM is proven. Streaming and multi-provider are future enhancements.
+
 ## Next Steps
 
-Continue to **03-kv-worker** to learn about IndexedDB and the hybrid JS/Rust architecture.
+Continue to [03-kv-worker](../03-kv-worker/) to learn about IndexedDB and the hybrid JS/Rust architecture.

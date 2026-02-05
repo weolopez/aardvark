@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WASM Virtual Shell</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Terminal Emulator -->
+        <div class="terminal-container">
+            <div id="output"></div>
+            <div class="input-line">
+                <span id="prompt">/home/user $</span>
+                <input type="text" id="cmd-input" autocomplete="off" autofocus>
+            </div>
+        </div>
+
+        <!-- Visual FS Inspector -->
+        <div class="inspector">
+            <h3>File System Inspector</h3>
+            <pre id="fs-tree"></pre>
+        </div>
+    </div>
+    <script type="module" src="index.js"></script>
+</body>
+</html>

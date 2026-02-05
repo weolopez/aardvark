@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Tree Debugger</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Session Tree Explorer</h1>
+            <div class="controls">
+                <button id="reset-btn">Reset Session</button>
+                <div class="stats">
+                    Total Nodes: <span id="node-count">0</span> | 
+                    Leaf ID: <span id="leaf-id" class="monospace">...</span>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Left: Tree Visualization -->
+            <section class="panel tree-panel">
+                <h2>Tree Visualization</h2>
+                <div id="viz-container"></div>
+                <div class="legend">
+                    <span class="dot active"></span> Active Path
+                    <span class="dot inactive"></span> Inactive Branch
+                    <span class="dot current"></span> Current Leaf
+                </div>
+            </section>
+
+            <!-- Right: Chat Interaction -->
+            <section class="panel chat-panel">
+                <h2>Linear History (Current Branch)</h2>
+                <div id="chat-history"></div>
+                
+                <div class="input-area">
+                    <div class="input-row">
+                        <select id="role-select">
+                            <option value="user">User</option>
+                            <option value="assistant">Assistant</option>
+                            <option value="system">System</option>
+                        </select>
+                        <button id="send-btn">Add Message</button>
+                    </div>
+                    <textarea id="message-input" placeholder="Type a message... (Cmd+Enter to send)"></textarea>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Load D3.js for tree visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script type="module" src="index.js"></script>
+</body>
+</html>

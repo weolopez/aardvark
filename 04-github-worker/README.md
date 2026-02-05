@@ -76,3 +76,33 @@ https://raw.githubusercontent.com/user/repo/main/path/file.js → path/file.js
 https://github.com/user/repo/blob/main/path/file.js → path/file.js
 /path/to/file.js → path/to/file.js
 ```
+
+## Coding Agent Goal Alignment
+
+This project provides **remote file access via the GitHub API** — enabling the browser-based agent to read and write files in GitHub repositories, replacing the TypeScript agent's local filesystem access.
+
+| Coding Agent Requirement | How This Project Addresses It |
+|--------------------------|-------------------------------|
+| File read operations | `getFile()` reads files from GitHub, equivalent to the [`readTool`](../coding-agent/core/tools/read.ts) |
+| File write operations | `saveFile()` commits files to GitHub, equivalent to the [`writeTool`](../coding-agent/core/tools/write.ts) |
+| Directory listing | `getDirectory()` lists repo contents, equivalent to the [`lsTool`](../coding-agent/core/tools/ls.ts) |
+| Content search | `search_files()` searches cached files, equivalent to the [`grepTool`](../coding-agent/core/tools/grep.ts) |
+| Path handling | `normalize_path()` handles URL/path variants safely in Rust |
+
+### Mapping to TypeScript Agent Tools
+
+| TypeScript Tool | GitHub Worker Equivalent |
+|-----------------|-------------------------|
+| `read(path)` | `fs.getFile(path)` — reads from GitHub API |
+| `write(path, content)` | `fs.saveFile(path, content, message)` — commits to GitHub |
+| `ls(path)` | `fs.getDirectory(path)` — lists repo directory |
+| `grep(pattern)` | `search_files()` in Rust over cached content |
+| `bash(command)` | Not applicable (see [08-virtual-shell](../08-virtual-shell/)) |
+
+### What's Still Needed
+
+- **File content caching** — Currently fetches on demand; needs a local cache layer (combine with [03-kv-worker](../03-kv-worker/))
+- **Batch operations** — No multi-file commit support yet
+- **Branch management** — Only default branch; needs branch creation/switching
+
+**Status: ✅ Complete** — GitHub file CRUD is operational with hybrid JS/Rust architecture.

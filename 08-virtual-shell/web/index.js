@@ -1,113 +1,119 @@
-import init, { Shell } from './pkg/virtual_shell.js';
+const worker = new Worker('./worker.js', { type: 'module' });
 
-let shell;
+// State
+let promptPath = "...";
+let cmdHistory = [];
+let historyIndex = -1;
 
-async function run() {
-    await init();
-    shell = new Shell();
+// UI Elements
+const outputDiv = document.getElementById('output');
+const promptSpan = document.getElementById('prompt');
+const input = document.getElementById('cmd-input');
+const fsTree = document.getElementById('fs-tree');
+
+// Initialize
+worker.postMessage({ type: 'INIT' });
+
+worker.onmessage = (e) => {
+    const { type, payload } = e.data;
     
-    updatePrompt();
-    updateInspector();
+    switch (type) {
+        case 'READY':
+            promptPath = payload.pwd;
+            updatePrompt();
+            updateFsView(payload.fs);
+            break;
+            
+        case 'TERMINAL_OUTPUT':
+            renderCommandOutput(payload);
+            break;
+            
+        case 'FS_UPDATE':
+            updateFsView(payload);
+            break;
+            
+        case 'PWD_UPDATE':
+            promptPath = payload;
+            updatePrompt();
+            break;
+    }
+};
 
-    const input = document.getElementById('cmd-input');
-    
-    // Focus input on click anywhere
-    document.querySelector('.terminal-container').addEventListener('click', () => {
-        input.focus();
-    });
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            const cmd = input.value;
-            execute(cmd);
-            input.value = '';
-        }
-    });
+function updatePrompt() {
+    promptSpan.innerText = `${promptPath} $`;
 }
 
-function execute(cmd) {
-    if (!cmd.trim()) return;
-
-    // 1. Render command
-    const outputDiv = document.getElementById('output');
-    const promptText = document.getElementById('prompt').innerText;
-    
+function renderCommandOutput({ cmd, stdout, stderr }) {
+    // 1. Echo Command
     const cmdLine = document.createElement('div');
     cmdLine.className = 'command-line';
-    cmdLine.innerText = `${promptText} ${cmd}`;
+    cmdLine.innerText = `${promptSpan.innerText} ${cmd}`;
     outputDiv.appendChild(cmdLine);
 
-    // 2. Run in WASM
-    // Clear console to debug WASM output
-    console.log(`Executing: ${cmd}`);
-    
-    const result = shell.execute(cmd);
-    
-    // 3. Render output
-    if (result) {
-        const resultDiv = document.createElement('div');
-        resultDiv.className = 'command-output';
-        // Check if it looks like an error for styling
-        if (result.startsWith && (result.startsWith("error:") || result.includes(": command not found"))) {
-            resultDiv.classList.add("error");
-        }
-        resultDiv.innerText = result;
-        outputDiv.appendChild(resultDiv);
+    // 2. Render Output
+    if (stderr) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'command-output error';
+        errorDiv.innerText = stderr;
+        outputDiv.appendChild(errorDiv);
+    } else if (stdout) {
+        const outDiv = document.createElement('div');
+        outDiv.className = 'command-output';
+        outDiv.innerText = stdout;
+        outputDiv.appendChild(outDiv);
     }
 
-    // 4. Update UI state
-    updatePrompt();
-    updateInspector();
-    
-    // Scroll to bottom
+    // Scroll
     const container = document.querySelector('.terminal-container');
     container.scrollTop = container.scrollHeight;
 }
 
-function updatePrompt() {
-    // We haven't exposed get_pwd directly efficiently (execute("pwd") returns string).
-    // But we implemented get_pwd in Rust, let's just use execute("pwd") internally 
-    // or we can add a specific getter if we want to be cleaner.
-    // Since execute("pwd") returns the path string, we can use that.
-    const pwd = shell.execute("pwd");
-    document.getElementById('prompt').innerText = `${pwd} $`;
+function updateFsView(fsRoot) {
+    // fsRoot is VirtualFileSystem { root: ... }
+    const formatted = formatNode(fsRoot.root, "");
+    fsTree.innerText = formatted;
 }
 
-function updateInspector() {
-    const json = shell.get_fs_json();
-    const fsObj = JSON.parse(json);
-    const formatted = formatTree(fsObj.root, "");
-    document.getElementById('fs-tree').innerText = formatted;
-}
-
-function formatTree(node, prefix) {
-    if (!node) return "";
-    
-    // The JSON structure is { "File": { "content": ... } } or { "Directory": { "children": ... } }
-    // Rust serde tagging might vary. Let's inspect the JSON format first by logging.
-    // Based on default enum serialization: {"Directory": {"children": {...}}}
-    
-    if (node.Directory) {
+function formatNode(node, prefix) {
+     if (node.Directory) {
         let output = "";
         const children = node.Directory.children;
         const keys = Object.keys(children).sort();
         
         keys.forEach((key, index) => {
+            const child = children[key];
             const isLast = index === keys.length - 1;
             const marker = isLast ? "└── " : "├── ";
             const newPrefix = prefix + (isLast ? "    " : "│   ");
             
-            output += `${prefix}${marker}${key}/\n`;
-            output += formatTree(children[key], newPrefix);
+            let lineSuffix = "";
+            if (child.File) {
+                const s = child.File.status;
+                if (s === 'new') lineSuffix = " (U)"; // Untracked
+                if (s === 'modified') lineSuffix = " (M)";
+            }
+            
+            output += `${prefix}${marker}${key}${lineSuffix}\n`;
+            
+            // Recurse
+            output += formatNode(child, newPrefix);
         });
         return output;
-    } else if (node.File) {
-        // Just show file exists, maybe size?
-        return ""; // Files are leaf nodes, handled by parent iteration usually, 
-                   // but here the parent call prints the name. 
-                   // If we wanted to show content preview, we could do it here.
     }
     return "";
 }
 
-run();
+// Event Listeners
+input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        const cmd = input.value.trim();
+        if (cmd) {
+            worker.postMessage({ type: 'EXECUTE', payload: cmd });
+            input.value = '';
+        }
+    }
+});
+
+document.querySelector('.terminal-container').addEventListener('click', () => {
+    input.focus();
+});

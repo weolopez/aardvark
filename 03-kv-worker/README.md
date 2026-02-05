@@ -199,6 +199,34 @@ This pattern is natural in JavaScript but awkward in Rust, where you'd need to:
 
 By keeping IndexedDB in JavaScript and validation/search in Rust, we get the best of both worlds!
 
+## Coding Agent Goal Alignment
+
+This project establishes the **persistent storage layer** required for session management, settings, and cached data — equivalent to the TypeScript agent's filesystem-based storage.
+
+| Coding Agent Requirement | How This Project Addresses It |
+|--------------------------|-------------------------------|
+| Session persistence | KV store can persist session tree entries (used by [07-session-tree](../07-session-tree/)) |
+| Settings storage | Key-value pairs for model selection, thinking level, API keys |
+| Search across stored data | Rust-powered `search_values()` for finding sessions, tasks, files |
+| Concurrent operations | Request/response ID pattern handles parallel reads/writes safely |
+| Subscription/events | `subscribe()` pattern mirrors [`Agent.subscribe()`](../agent/README.md:24) |
+
+### Mapping to TypeScript Agent
+
+| TypeScript Agent | Rust/WASM Equivalent |
+|------------------|---------------------|
+| `~/.pi/agent/sessions/` JSONL files | IndexedDB `KVDatabase` stores |
+| [`appendFileSync()`](../coding-agent/core/session-manager.ts:6) for session writes | `db.set(key, value)` |
+| [`readFileSync()`](../coding-agent/core/session-manager.ts:12) for session reads | `db.get(key)` |
+| [`readdirSync()`](../coding-agent/core/session-manager.ts:11) for session listing | `db.keys()` / `db.find()` |
+| `settings-manager.ts` key-value settings | Direct KV storage equivalent |
+
+### The Hybrid Pattern is Key
+
+The hybrid JS/Rust architecture established here is reused by [04-github-worker](../04-github-worker/) and [05-task-worker](../05-task-worker/). It recognizes that browser APIs like IndexedDB are best accessed from JavaScript, while data processing, validation, and search run faster and safer in Rust.
+
+**Status: ✅ Complete** — Persistent storage with subscription support is operational.
+
 ## Next Steps
 
 Continue to **04-github-worker** to build a GitHub file explorer using the same hybrid pattern with Octokit.

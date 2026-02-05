@@ -104,6 +104,19 @@ worker.onmessage = (event) => {
 3. **Clean separation**: Worker code is isolated from main thread
 4. **Perfect for WASM**: Ideal environment for CPU-intensive Rust code
 
+## Coding Agent Goal Alignment
+
+This project establishes the **foundational infrastructure** required to run a Rust-based coding agent in the browser. Every subsequent building block depends on the patterns proven here.
+
+| Coding Agent Requirement | How This Project Addresses It |
+|--------------------------|-------------------------------|
+| Non-blocking agent execution | Web Workers run the agent on a separate thread, keeping the UI responsive |
+| Rust/WASM runtime | Proves `wasm-bindgen` + `wasm-pack` toolchain compiles and loads correctly |
+| Main thread ↔ Agent communication | `postMessage` protocol is the backbone for all future agent events |
+| ES Module loading in workers | `{ type: 'module' }` workers enable clean WASM imports |
+
+**Status: ✅ Complete** — All foundational patterns are established and reused by every subsequent project.
+
 ## Next Steps
 
-Continue to **02-gemini-worker** to learn how to make HTTP requests from WASM.
+Continue to [02-gemini-worker](../02-gemini-worker/) to learn how to make HTTP requests from WASM.

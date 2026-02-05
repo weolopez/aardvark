@@ -261,3 +261,32 @@ The agent can use these tools to:
 - Track progress on multi-step operations
 - Manage parallel work across sub-agents
 - Persist state across sessions
+
+## Coding Agent Goal Alignment
+
+This project provides **structured task orchestration** — a capability the TypeScript agent lacks natively but that enables plan-mode and multi-step workflows in the browser agent.
+
+| Coding Agent Requirement | How This Project Addresses It |
+|--------------------------|-------------------------------|
+| Multi-step task tracking | Tasks with dependencies model complex coding workflows |
+| Sub-agent orchestration | `sub_agent` field enables parallel agent coordination |
+| Persistent task state | IndexedDB storage survives page reloads and session switches |
+| Markdown import | `task_hydrate()` can ingest task lists from LLM-generated plans |
+| LLM tool integration | Tool-shaped API matches the [`AgentTool`](../agent/types.ts:157) interface pattern |
+
+### Mapping to TypeScript Agent
+
+| TypeScript Agent | Task Worker Equivalent |
+|------------------|----------------------|
+| No native plan mode | `task_create` / `task_list` / `task_update` provide structured planning |
+| Manual steering messages | Auto-unblocking dependencies drives workflow progression |
+| Single agent execution | `sub_agent` field enables multi-agent orchestration |
+| Extension-based task tracking | First-class Rust implementation with persistence |
+
+### Integration Points
+
+- Combines with [03-kv-worker](../03-kv-worker/) for IndexedDB persistence
+- Tasks can reference [04-github-worker](../04-github-worker/) file operations
+- The [06-agent](../06-agent/) can register task tools for the LLM to call
+
+**Status: ✅ Complete** — Full task lifecycle with dependency resolution and persistence.

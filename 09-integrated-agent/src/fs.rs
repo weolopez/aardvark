@@ -329,6 +329,42 @@ impl VirtualFileSystem {
         }
     }
 
+    /// Collect all files that have been modified or newly created
+    pub fn get_changed_files(&self) -> Vec<VirtualFile> {
+        let mut changed = Vec::new();
+        self.collect_changed_recursive(&self.root, &mut changed);
+        changed
+    }
+
+    fn collect_changed_recursive(&self, node: &FileNode, changed: &mut Vec<VirtualFile>) {
+        match node {
+            FileNode::File(f) => {
+                if f.status == FileStatus::Modified || f.status == FileStatus::New {
+                    changed.push(f.clone());
+                }
+            }
+            FileNode::Directory { children } => {
+                for (_, child) in children {
+                    self.collect_changed_recursive(child, changed);
+                }
+            }
+        }
+    }
+
+    /// Mark a file as synced (after successful commit)
+    pub fn mark_synced(&mut self, path: Vec<&str>, new_sha: Option<String>) -> Result<(), String> {
+        let node = self.get_node_mut(&path)?;
+        if let FileNode::File(f) = node {
+            f.status = FileStatus::Synced;
+            if new_sha.is_some() {
+                f.sha = new_sha;
+            }
+            Ok(())
+        } else {
+            Err("Not a file".to_string())
+        }
+    }
+
     /// Load files from a JSON-parsed array (e.g., from GitHub API)
     pub fn load_files(&mut self, files: Vec<VirtualFile>) {
         for file in files {

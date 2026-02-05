@@ -6,7 +6,7 @@ use crate::shell::Shell;
 use crate::tools::ToolRegistry;
 use wasm_bindgen::prelude::*;
 
-// JS callback for emitting events to the main thread
+// JS callbacks
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_name = "emitAgentEvent")]
@@ -14,6 +14,10 @@ extern "C" {
 
     #[wasm_bindgen(js_name = "persistSessionEntry")]
     fn persist_session_entry(session_id: &str, entry_json: &str);
+
+    // Async JS function: commits changed files to GitHub, returns result JSON
+    #[wasm_bindgen(js_name = "commitChangedFiles", catch)]
+    async fn commit_changed_files_js(message: &str, files_json: &str) -> Result<JsValue, JsValue>;
 }
 
 /// Maximum number of tool call rounds before forcing a stop
@@ -88,6 +92,22 @@ impl CodingAgent {
     /// Get the filesystem tree as JSON
     pub fn get_fs_json(&self) -> String {
         serde_json::to_string(&self.shell.fs).unwrap_or("{}".to_string())
+    }
+
+    /// Get all changed (Modified/New) files as JSON
+    pub fn get_changed_files(&self) -> String {
+        let changed = self.shell.fs.get_changed_files();
+        serde_json::to_string(&changed).unwrap_or("[]".to_string())
+    }
+
+    /// Mark a file as synced after successful commit
+    pub fn mark_file_synced(&mut self, path: String, new_sha: Option<String>) -> Result<(), JsValue> {
+        let resolved = self.shell.resolve_path(&path);
+        let path_refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
+        self.shell
+            .fs
+            .mark_synced(path_refs, new_sha)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     /// Get the current working directory
@@ -186,16 +206,22 @@ impl CodingAgent {
                             .unwrap();
                             emit_agent_event(&start_event);
 
-                            // Execute the tool
-                            let result = self.tools.execute(&mut self.shell, &call.name, &call.args);
+                            // Check if this is an external tool (handled by JS)
+                            let (result_content, is_error, fs_changed) = if self.tools.is_external_tool(&call.name) {
+                                self.execute_external_tool(&call.name, &call.args).await
+                            } else {
+                                // Execute locally in Rust
+                                let result = self.tools.execute(&mut self.shell, &call.name, &call.args);
+                                (result.content, result.is_error, result.fs_changed)
+                            };
 
                             // Add tool result to LLM history
                             let result_value: serde_json::Value =
                                 serde_json::from_str(&format!(
                                     "{{\"result\": {}}}",
-                                    serde_json::to_string(&result.content).unwrap()
+                                    serde_json::to_string(&result_content).unwrap()
                                 ))
-                                .unwrap_or(serde_json::json!({"result": result.content}));
+                                .unwrap_or(serde_json::json!({"result": result_content}));
 
                             self.history.push(ChatMessage {
                                 role: "function".to_string(),
@@ -212,12 +238,12 @@ impl CodingAgent {
 
                             // Emit tool result event
                             let result_step =
-                                AgentStep::tool_result(call.name.clone(), result.content.clone(), result.is_error);
+                                AgentStep::tool_result(call.name.clone(), result_content.clone(), is_error);
                             let result_json = serde_json::to_string(&result_step).unwrap();
                             emit_agent_event(&result_json);
 
-                            // Update system prompt if cwd changed or fs changed
-                            if result.fs_changed {
+                            // Update system prompt if fs changed
+                            if fs_changed {
                                 self.system_prompt = prompt::build_system_prompt(
                                     &self.tools,
                                     &self.shell.get_pwd(),
@@ -302,6 +328,54 @@ impl CodingAgent {
         }
 
         Ok(AgentStep::error("No response from LLM".to_string()))
+    }
+
+    /// Execute an external tool (handled by async JavaScript)
+    async fn execute_external_tool(&mut self, name: &str, args: &serde_json::Value) -> (String, bool, bool) {
+        match name {
+            "commit" => {
+                let message = args
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Changes from coding agent");
+
+                // Collect changed files from VFS
+                let changed = self.shell.fs.get_changed_files();
+                if changed.is_empty() {
+                    return ("No changed files to commit.".to_string(), false, false);
+                }
+
+                let files_json = serde_json::to_string(&changed).unwrap_or("[]".to_string());
+
+                // Call async JavaScript to do the actual GitHub commit
+                match commit_changed_files_js(message, &files_json).await {
+                    Ok(js_result) => {
+                        let result_str = js_result.as_string().unwrap_or_default();
+
+                        // Parse the result to mark files as synced
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result_str) {
+                            if let Some(committed) = parsed.get("committed").and_then(|v| v.as_array()) {
+                                for item in committed {
+                                    if let Some(path) = item.get("path").and_then(|v| v.as_str()) {
+                                        let sha = item.get("sha").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                        let resolved = self.shell.resolve_path(path);
+                                        let refs: Vec<&str> = resolved.iter().map(|s| s.as_str()).collect();
+                                        let _ = self.shell.fs.mark_synced(refs, sha);
+                                    }
+                                }
+                            }
+                        }
+
+                        (result_str, false, true)
+                    }
+                    Err(e) => {
+                        let err_msg = e.as_string().unwrap_or_else(|| format!("{:?}", e));
+                        (format!("Commit failed: {}", err_msg), true, false)
+                    }
+                }
+            }
+            _ => (format!("Unknown external tool: {}", name), true, false),
+        }
     }
 
     /// Rebuild LLM history from the session tree's current branch

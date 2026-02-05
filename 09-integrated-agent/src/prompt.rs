@@ -14,6 +14,7 @@ pub fn build_system_prompt(tools: &ToolRegistry, cwd: &str) -> String {
     let has_write = tools.definitions.iter().any(|t| t.name == "write");
     let has_grep = tools.definitions.iter().any(|t| t.name == "grep");
     let has_find = tools.definitions.iter().any(|t| t.name == "find");
+    let has_commit = tools.definitions.iter().any(|t| t.name == "commit");
 
     let mut guidelines = Vec::new();
 
@@ -34,9 +35,20 @@ pub fn build_system_prompt(tools: &ToolRegistry, cwd: &str) -> String {
         guidelines
             .push("Prefer grep/find tools over bash for file exploration (faster, more structured output).");
     }
+    if has_commit {
+        guidelines.push(
+            "After making file changes, use the commit tool to push them to GitHub. \
+             The commit tool will return the GitHub URLs of committed files.",
+        );
+        guidelines.push(
+            "When asked if changes are on GitHub or for a file URL, use commit to push first, \
+             then construct the URL as: https://github.com/{owner}/{repo}/blob/{branch}/{path}",
+        );
+    }
     guidelines.push("Be concise in your responses.");
     guidelines.push("Show file paths clearly when working with files.");
     guidelines.push("When you make changes, verify them with read to confirm they look correct.");
+    guidelines.push("Never say you cannot do something. Always try to find a solution using the available tools.");
 
     let guidelines_text: String = guidelines
         .iter()
@@ -45,11 +57,11 @@ pub fn build_system_prompt(tools: &ToolRegistry, cwd: &str) -> String {
         .join("\n");
 
     format!(
-        "You are an expert coding assistant operating in a browser-based virtual filesystem. \
-You help users by reading files, executing commands, editing code, and writing new files.
+        "You are an expert coding assistant with access to a filesystem backed by a GitHub repository. \
+You help users by reading files, executing commands, editing code, writing new files, and committing changes to GitHub.
 
-All file operations happen on a virtual filesystem that may be loaded from a GitHub repository. \
-Files you create or modify exist in memory and can be inspected in the file explorer.
+The filesystem is loaded from a GitHub repository. When you create or modify files, those changes \
+can be committed back to GitHub using the commit tool. You have full read and write access to the repository.
 
 ## Available Tools
 

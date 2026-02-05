@@ -29,16 +29,6 @@ export class AgentClient {
         });
     }
 
-    async loadRepo(owner, repo, branch) {
-        return new Promise((resolve, reject) => {
-            this.pendingOps.set('load_repo', { resolve, reject });
-            this.worker.postMessage({
-                type: 'load_repo',
-                payload: { owner, repo, branch },
-            });
-        });
-    }
-
     async chat(message) {
         return new Promise((resolve, reject) => {
             this.pendingChat = { resolve, reject };
@@ -47,6 +37,28 @@ export class AgentClient {
                 payload: { message },
             });
         });
+    }
+
+    async loadRepo(owner, repo, branch, token) {
+        return new Promise((resolve, reject) => {
+            this.pendingOps.set('load_repo', { resolve, reject });
+            this.worker.postMessage({
+                type: 'load_repo',
+                payload: { owner, repo, branch, token },
+            });
+        });
+    }
+
+    async setToken(token) {
+        return this._request('set_token', { token }, 'token_set');
+    }
+
+    async getChangedFiles() {
+        return this._request('get_changed_files', {}, 'changed_files');
+    }
+
+    async commitChanges(message) {
+        return this._request('commit_changes', { message }, 'commit_result');
     }
 
     async getFs() {
@@ -117,6 +129,9 @@ export class AgentClient {
             case 'branched':
             case 'cleared':
             case 'pwd':
+            case 'token_set':
+            case 'changed_files':
+            case 'commit_result':
                 if (this.pendingOps.has(type)) {
                     this.pendingOps.get(type).resolve(payload);
                     this.pendingOps.delete(type);

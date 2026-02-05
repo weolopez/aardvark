@@ -4,6 +4,7 @@ pub mod edit;
 pub mod bash;
 pub mod grep;
 pub mod find;
+pub mod commit;
 
 use crate::models::{FunctionDeclaration, ToolDefinition, ToolOutput};
 use crate::shell::Shell;
@@ -26,7 +27,7 @@ impl ToolRegistry {
         }
     }
 
-    /// Create a registry with all tools including grep and find
+    /// Create a registry with all tools including grep, find, and commit
     pub fn all_tools() -> Self {
         ToolRegistry {
             definitions: vec![
@@ -36,8 +37,14 @@ impl ToolRegistry {
                 bash::definition(),
                 grep::definition(),
                 find::definition(),
+                commit::definition(),
             ],
         }
+    }
+
+    /// Check if a tool name is handled externally (async JS)
+    pub fn is_external_tool(&self, name: &str) -> bool {
+        name == "commit"
     }
 
     /// Execute a tool by name

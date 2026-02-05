@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>06-agent: AI Agent</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+        .setup { background: #f0f0f0; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
+        .chat-container { border: 1px solid #ccc; border-radius: 8px; height: 400px; display: flex; flex-direction: column; overflow: hidden; }
+        .chat-history { flex: 1; overflow-y: auto; padding: 1rem; background: #fafafa; }
+        .input-area { padding: 1rem; background: #fff; border-top: 1px solid #ccc; display: flex; gap: 0.5rem; }
+        input[type="text"] { flex: 1; padding: 0.5rem; }
+        button { padding: 0.5rem 1rem; cursor: pointer; }
+        .message { margin-bottom: 0.5rem; padding: 0.5rem; border-radius: 4px; max-width: 80%; }
+        .message.user { background: #0070f3; color: white; align-self: flex-end; margin-left: auto; }
+        .message.model { background: #e0e0e0; align-self: flex-start; }
+        .message.tool { font-family: monospace; font-size: 0.8rem; color: #666; width: 100%; border-bottom: 1px solid #eee; }
+        .logs { margin-top: 1rem; background: #333; color: #0f0; padding: 1rem; border-radius: 8px; font-family: monospace; height: 200px; overflow-y: auto; font-size: 0.8rem; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>06-agent: AI Agent (ReAct Loop)</h1>
+    <p>This agent runs in a Web Worker, thinks, calls tools (executed in Main thread), and observes results.</p>
+
+    <div id="setup" class="setup">
+        <label>Gemini API Key: <input type="password" id="apiKey" placeholder="AIza..."></label>
+        <button id="connectBtn">Connect Agent</button>
+    </div>
+
+    <div id="app" class="hidden">
+        <div class="chat-container">
+            <div id="chatHistory" class="chat-history"></div>
+            <div class="input-area">
+                <input type="text" id="userInput" placeholder="Ask me to do something (e.g., 'What is 5 + 3?')">
+                <button id="sendBtn">Send</button>
+            </div>
+        </div>
+        
+        <h3>Agent Logs (Thinking & Tools)</h3>
+        <div id="logs" class="logs"></div>
+    </div>
+
+    <script type="module">
+        import { AgentClient } from './AgentClient.js';
+
+        let client = null;
+        const logDiv = document.getElementById('logs');
+        const chatDiv = document.getElementById('chatHistory');
+
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            if (type === 'tool') div.style.color = 'yellow';
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function appendMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.textContent = text;
+            chatDiv.appendChild(div);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        // Define some basic tools
+        const tools = [
+            {
+                name: "calculator",
+                description: "Perform basic arithmetic operations",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        operation: { type: "string", enum: ["add", "subtract", "multiply", "divide"] },
+                        a: { type: "number" },
+                        b: { type: "number" }
+                    },
+                    required: ["operation", "a", "b"]
+                },
+                implementation: async ({ operation, a, b }) => {
+                    log(`Tool: calculator(${operation}, ${a}, ${b})`, 'tool');
+                    await new Promise(r => setTimeout(r, 500)); // Fake delay
+                    switch(operation) {
+                        case 'add': return { result: a + b };
+                        case 'subtract': return { result: a - b };
+                        case 'multiply': return { result: a * b };
+                        case 'divide': return { result: a / b };
+                        default: return { error: "Unknown operation" };
+                    }
+                }
+            },
+            {
+                name: "get_time",
+                description: "Get the current time",
+                parameters: {
+                    type: "object",
+                    properties: {},
+                },
+                implementation: async () => {
+                    log(`Tool: get_time()`, 'tool');
+                    return { time: new Date().toISOString() };
+                }
+            }
+        ];
+
+        // Load API Key from localStorage
+        const storedKey = localStorage.getItem('GEMINI_API_KEY');
+        if (storedKey) {
+            document.getElementById('apiKey').value = storedKey;
+        }
+
+        document.getElementById('connectBtn').onclick = async () => {
+            const apiKey = document.getElementById('apiKey').value;
+            if (!apiKey) return alert('API Key required');
+
+            // Save to localStorage
+            localStorage.setItem('GEMINI_API_KEY', apiKey);
+
+            document.getElementById('connectBtn').disabled = true;
+            document.getElementById('connectBtn').textContent = 'Connecting...';
+
+            try {
+                client = new AgentClient(apiKey, "gemini-2.0-flash", "You are a helpful assistant with access to tools. Use them when needed.");
+                await client.ready();
+
+                // Register tools
+                for (const t of tools) {
+                    client.registerTool(t.name, t.description, t.parameters, t.implementation);
+                }
+
+                document.getElementById('setup').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+                log("Agent connected and tools registered.");
+            } catch (e) {
+                alert("Failed to connect: " + e.message);
+                document.getElementById('connectBtn').disabled = false;
+            }
+        };
+
+        document.getElementById('sendBtn').onclick = sendMessage;
+        document.getElementById('userInput').onkeypress = (e) => {
+            if (e.key === 'Enter') sendMessage();
+        };
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            input.value = '';
+            appendMessage('user', text);
+            document.getElementById('sendBtn').disabled = true;
+
+            try {
+                log(`Thinking...`);
+                const response = await client.chat(text, (step) => {
+                    if (step.type === 'tool_call') {
+                        const calls = step.tool_calls.map(c => `${c.name}(${JSON.stringify(c.args)})`).join(', ');
+                        log(`Agent decided to call: ${calls}`, 'tool');
+                    } else if (step.type === 'text') {
+                        // Intermediate text? usually final.
+                    }
+                });
+                
+                appendMessage('model', response);
+                log("Response received.");
+            } catch (e) {
+                log(`Error: ${e.message}`, 'error');
+                appendMessage('model', `Error: ${e.message}`);
+            } finally {
+                document.getElementById('sendBtn').disabled = false;
+                input.focus();
+            }
+        }
+    </script>
+</body>
+</html>

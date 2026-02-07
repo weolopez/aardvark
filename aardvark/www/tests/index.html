@@ -53,17 +53,27 @@
     const testSuites = [
       {
         name: 'Event Bus - Unit Tests',
-        url: '../components/core/event-bus/tests/unit/event-bus.spec.html',
+        url: '../../components/core/event-bus/tests/unit/event-bus.spec.html',
         status: 'pending'
       },
       {
         name: 'Event Bus - Integration Tests',
-        url: '../components/core/event-bus/tests/integration/cross-component.spec.html',
+        url: '../../components/core/event-bus/tests/integration/cross-component.spec.html',
         status: 'pending'
       },
       {
         name: 'OPFS Provider - Unit Tests',
-        url: '../components/core/opfs-provider/tests/unit/opfs-provider.spec.html',
+        url: '../../components/core/opfs-provider/tests/unit/opfs-provider.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'IndexedDB Provider - Unit Tests',
+        url: '../../components/core/indexeddb-provider/tests/unit/indexeddb-provider.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'Message Bridge - Unit Tests',
+        url: '../../components/core/message-bridge/tests/unit/message-bridge.spec.html',
         status: 'pending'
       }
     ];
@@ -85,7 +95,7 @@
           </span>
         </div>
         <div class="mt-4">
-          <iframe src="${suite.url}" class="w-full h-96 border border-gray-200 rounded" sandbox="allow-scripts"></iframe>
+          <iframe src="${suite.url}" class="w-full h-96 border border-gray-200 rounded" sandbox="allow-scripts allow-same-origin"></iframe>
         </div>
       `;
       return el;

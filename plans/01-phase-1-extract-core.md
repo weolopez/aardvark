@@ -298,87 +298,56 @@ components/core/indexeddb-provider/
 
 ### 4. Message Bridge (`components/core/message-bridge/`)
 **Priority**: P1 (High - enables worker communication)
-**Effort**: 3 days
+**Effort**: 2 days
 
-**Purpose**: Communication layer between Web Worker and Main Thread
+**Purpose**: A simple communication layer that forwards messages between the Web Worker and the Main Thread, integrating with the Event Bus.
 
-**Why Important**: The agent runs in a Web Worker, UI in Main Thread. They need to communicate.
+**Why Important**: The agent runs in a Web Worker and the UI in the Main Thread. This component bridges the two contexts, allowing for decoupled communication through the Event Bus on each side.
 
 **Interface**:
 ```javascript
-// Message types
-interface WorkerMessage {
-  id: string;
-  type: WorkerMessageType;
-  payload: any;
-  timestamp: number;
+// A generic message format for cross-thread communication
+interface BridgeMessage {
+  // The event name to be published on the destination Event Bus
+  event: string; 
+  // The data payload for the event
+  data: any;
 }
-
-type WorkerMessageType = 
-  | 'init'
-  | 'chat'
-  | 'branch'
-  | 'load_repo'
-  | 'get_history'
-  | 'get_tree'
-  | 'approve_tool'
-  | 'reject_tool';
-
-interface WorkerResponse {
-  id: string;
-  type: WorkerResponseType;
-  payload: any;
-  timestamp: number;
-}
-
-type WorkerResponseType = 
-  | 'ready'
-  | 'step'
-  | 'tool_call'
-  | 'tool_result'
-  | 'done'
-  | 'error'
-  | 'tool_pending';
 
 // Main Thread API
 interface MessageBridgeMain {
-  initialize(workerScript: string): Promise<void>;
-  postMessage(message: WorkerMessage): void;
-  onMessage(handler: (msg: WorkerResponse) => void): void;
+  // Posts a message to the worker, which will be published on the worker's Event Bus
+  postToWorker(message: BridgeMessage): void;
   terminate(): void;
 }
 
 // Worker API
 interface MessageBridgeWorker {
-  postMessage(message: WorkerResponse): void;
-  onMessage(handler: (msg: WorkerMessage) => void): void;
+  // Posts a message to the main thread, which will be published on the main thread's Event Bus
+  postToMain(message: BridgeMessage): void;
 }
 ```
 
 **Implementation Details**:
-- Promise-based request/response matching (correlate request id with response)
-- Automatic reconnection on worker crash
-- Message serialization (handle complex objects)
-- Error propagation from worker to main
-- Support for transferable objects (for performance)
+- The main-thread bridge listens for messages from the worker and `publish()`es them to the main-thread `EventBus`.
+- The main-thread bridge has a method to `subscribe()` to the local `EventBus` for specific events that should be forwarded to the worker.
+- The worker-side bridge does the reverse: listens for messages from the main thread and publishes them to the worker's `EventBus`.
+- This design removes any direct request/response logic from the bridge itself, making it a pure message forwarder. All stateful communication is handled by other components via the event bus.
+- Automatic reconnection on worker crash.
+- Message serialization (handle complex objects).
+- Error propagation from worker to main.
 
 **Features**:
-- Request/Response correlation
-- Timeout handling
-- Message queuing (if worker not ready)
-- Error boundary
+- Decouples worker and main thread via Event Bus integration.
+- Error boundary and propagation.
+- Timeout handling for messages is no longer a bridge concern; it's up to the components that send and receive events.
 
 **Testing Requirements**:
-- [ ] Send message from main to worker
-- [ ] Receive message in worker
-- [ ] Send response from worker
-- [ ] Receive response in main
-- [ ] Request/Response correlation
-- [ ] Timeout handling
-- [ ] Worker error propagation
-- [ ] Message queuing before init
-- [ ] Worker termination
-- [ ] Reconnection after crash
+- [ ] Send message from main to worker, verify event is published on worker's Event Bus.
+- [ ] Send message from worker to main, verify event is published on main's Event Bus.
+- [ ] Ensure errors from the worker are propagated to the main thread and published on the Event Bus.
+- [ ] Worker termination.
+- [ ] Reconnection after crash.
 
 **Files to Create**:
 ```
@@ -387,9 +356,7 @@ components/core/message-bridge/
 │   ├── index.js
 │   ├── message-bridge-main.js    # Main thread side
 │   ├── message-bridge-worker.js  # Worker side
-│   ├── types.js
-│   └── utils/
-│       └── correlation.js        # Request/Response matching
+│   └── types.js                  # Shared message types
 ├── tests/
 │   ├── unit/
 │   │   ├── message-bridge-main.spec.js

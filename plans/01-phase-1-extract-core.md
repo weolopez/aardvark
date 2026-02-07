@@ -23,7 +23,7 @@ Phase 1 focuses on extracting the foundational components that all other compone
 **Why First**: All other components communicate through the event bus. Without it, components can't talk to each other.
 
 **Interface**:
-```typescript
+```javascript
 interface EventBus {
   subscribe(event: string, handler: Function): string;
   unsubscribe(subscriptionId: string): void;
@@ -34,14 +34,14 @@ interface EventBus {
 ```
 
 **Implementation Details**:
-- Pure TypeScript, no external dependencies
+- Pure JavaScript, no external dependencies
 - Synchronous publish (handlers execute immediately)
 - Support for wildcard patterns (optional)
 - Error isolation (one handler failing doesn't break others)
 - Subscription ID generation using UUID or counter
 
 **Key Events to Support**:
-```typescript
+```javascript
 type SystemEvents = 
   | 'system:ready'
   | 'system:error'
@@ -70,15 +70,15 @@ type SystemEvents =
 ```
 components/core/event-bus/
 ├── src/
-│   ├── index.ts              # Main export
-│   ├── event-bus.ts          # Core implementation
-│   ├── types.ts              # TypeScript interfaces
-│   └── constants.ts          # Event name constants
+│   ├── index.js              # Main export
+│   ├── event-bus.js          # Core implementation
+│   ├── types.js              # JavaScript interfaces
+│   └── constants.js          # Event name constants
 ├── tests/
 │   ├── unit/
-│   │   └── event-bus.spec.ts
+│   │   └── event-bus.spec.js
 │   └── integration/
-│       └── cross-tab.spec.ts
+│       └── cross-tab.spec.js
 ├── README.md
 ├── package.json
 └── tsconfig.json
@@ -95,7 +95,7 @@ components/core/event-bus/
 **Why Early**: All file operations go through OPFS. Tools need this to read/write files.
 
 **Interface**:
-```typescript
+```javascript
 interface OPFSProvider {
   // File operations
   readFile(path: string): Promise<string>;
@@ -157,16 +157,16 @@ interface FileMetadata {
 ```
 components/core/opfs-provider/
 ├── src/
-│   ├── index.ts
-│   ├── opfs-provider.ts
-│   ├── types.ts
+│   ├── index.js
+│   ├── opfs-provider.js
+│   ├── types.js
 │   └── utils/
-│       └── path.ts           # Path normalization
+│       └── path.js           # Path normalization
 ├── tests/
 │   ├── unit/
-│   │   └── opfs-provider.spec.ts
+│   │   └── opfs-provider.spec.js
 │   └── integration/
-│       └── large-files.spec.ts
+│       └── large-files.spec.js
 ├── README.md
 ├── package.json
 └── tsconfig.json
@@ -183,7 +183,7 @@ components/core/opfs-provider/
 **Why Early**: Session tree and settings need persistent storage.
 
 **Interface**:
-```typescript
+```javascript
 interface IndexedDBProvider {
   // Basic CRUD
   get(store: string, key: string): Promise<any>;
@@ -278,17 +278,17 @@ interface Transaction {
 ```
 components/core/indexeddb-provider/
 ├── src/
-│   ├── index.ts
-│   ├── indexeddb-provider.ts
-│   ├── types.ts
-│   ├── schema.ts             # Database schema definition
+│   ├── index.js
+│   ├── indexeddb-provider.js
+│   ├── types.js
+│   ├── schema.js             # Database schema definition
 │   └── migrations/
-│       └── v1.ts             # Initial schema
+│       └── v1.js             # Initial schema
 ├── tests/
 │   ├── unit/
-│   │   └── indexeddb-provider.spec.ts
+│   │   └── indexeddb-provider.spec.js
 │   └── integration/
-│       └── migrations.spec.ts
+│       └── migrations.spec.js
 ├── README.md
 ├── package.json
 └── tsconfig.json
@@ -305,7 +305,7 @@ components/core/indexeddb-provider/
 **Why Important**: The agent runs in a Web Worker, UI in Main Thread. They need to communicate.
 
 **Interface**:
-```typescript
+```javascript
 // Message types
 interface WorkerMessage {
   id: string;
@@ -384,18 +384,18 @@ interface MessageBridgeWorker {
 ```
 components/core/message-bridge/
 ├── src/
-│   ├── index.ts
-│   ├── message-bridge-main.ts    # Main thread side
-│   ├── message-bridge-worker.ts  # Worker side
-│   ├── types.ts
+│   ├── index.js
+│   ├── message-bridge-main.js    # Main thread side
+│   ├── message-bridge-worker.js  # Worker side
+│   ├── types.js
 │   └── utils/
-│       └── correlation.ts        # Request/Response matching
+│       └── correlation.js        # Request/Response matching
 ├── tests/
 │   ├── unit/
-│   │   ├── message-bridge-main.spec.ts
-│   │   └── message-bridge-worker.spec.ts
+│   │   ├── message-bridge-main.spec.js
+│   │   └── message-bridge-worker.spec.js
 │   └── integration/
-│       └── worker-communication.spec.ts
+│       └── worker-communication.spec.js
 ├── README.md
 ├── package.json
 └── tsconfig.json
@@ -410,7 +410,7 @@ components/core/message-bridge/
 **Purpose**: LLM API communication with multiple provider support
 
 **Interface**:
-```typescript
+```javascript
 interface APIClient {
   initialize(config: APIConfig): void;
   sendRequest(request: LLMRequest): Promise<LLMResponse>;
@@ -492,24 +492,24 @@ interface TokenUsage {
 ```
 components/core/api-client/
 ├── src/
-│   ├── index.ts
-│   ├── api-client.ts
-│   ├── types.ts
+│   ├── index.js
+│   ├── api-client.js
+│   ├── types.js
 │   ├── providers/
-│   │   ├── base.ts
-│   │   ├── gemini.ts
-│   │   ├── openai.ts
-│   │   └── anthropic.ts
+│   │   ├── base.js
+│   │   ├── gemini.js
+│   │   ├── openai.js
+│   │   └── anthropic.js
 │   └── utils/
-│       ├── retry.ts
-│       └── tokens.ts
+│       ├── retry.js
+│       └── tokens.js
 ├── tests/
 │   ├── unit/
-│   │   ├── api-client.spec.ts
+│   │   ├── api-client.spec.js
 │   │   └── providers/
-│   │       └── gemini.spec.ts
+│   │       └── gemini.spec.js
 │   └── integration/
-│       └── streaming.spec.ts
+│       └── streaming.spec.js
 ├── README.md
 ├── package.json
 └── tsconfig.json
@@ -596,7 +596,7 @@ components/core/api-client/
 
 ### Test Utilities
 Create shared test utilities:
-```typescript
+```javascript
 // components/core/test-utils/
 export function createMockEventBus(): EventBus;
 export function createMockOPFS(): OPFSProvider;
@@ -614,8 +614,8 @@ Build each component in `components/core/{name}/` without touching existing code
 
 ### Step 2: Create Adapters
 Build adapters to bridge old code with new components:
-```typescript
-// adapters/event-bus-adapter.ts
+```javascript
+// adapters/event-bus-adapter.js
 // Wraps old event handling to use new EventBus
 ```
 
@@ -764,8 +764,8 @@ Once Phase 1 is complete:
 2. Which package manager? npm, pnpm, yarn?
    - **Recommendation**: pnpm for better monorepo support
 
-3. Should components be web components (Custom Elements) or just TypeScript classes?
-   - **Recommendation**: Start with TypeScript classes, add Custom Elements wrapper later if needed
+3. Should components be web components (Custom Elements) or just JavaScript classes?
+   - **Recommendation**: Start with JavaScript classes, add Custom Elements wrapper later if needed
 
 4. How do we handle versioning?
    - **Recommendation**: All components start at v0.1.0, use semantic versioning
@@ -794,7 +794,7 @@ cat > components/$COMPONENT_CATEGORY/$COMPONENT_NAME/package.json << EOF
   "name": "@agent/$COMPONENT_NAME",
   "version": "0.1.0",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/index.d.js",
   "scripts": {
     "build": "tsc",
     "test": "vitest",
@@ -804,8 +804,8 @@ cat > components/$COMPONENT_CATEGORY/$COMPONENT_NAME/package.json << EOF
 }
 EOF
 
-# Create src/index.ts
-cat > components/$COMPONENT_CATEGORY/$COMPONENT_NAME/src/index.ts << EOF
+# Create src/index.js
+cat > components/$COMPONENT_CATEGORY/$COMPONENT_NAME/src/index.js << EOF
 export * from './$COMPONENT_NAME';
 export * from './types';
 EOF

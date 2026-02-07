@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - File Store Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .file-item:hover { background-color: #f3f4f6; }
+    .loading-spinner {
+      border: 3px solid #f3f4f6;
+      border-top: 3px solid #3b82f6;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">File Store</h1>
+      <p class="text-gray-600">Repository file management with GitHub integration</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Repository Panel -->
+      <div class="lg:col-span-1 space-y-6">
+        <!-- Repository List -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">Repositories</h2>
+            <button id="btn-refresh-repos" class="text-sm text-blue-600 hover:text-blue-800">
+              Refresh
+            </button>
+          </div>
+          
+          <div id="repo-list" class="space-y-2">
+            <div class="text-gray-400 text-center py-4">Loading...</div>
+          </div>
+          
+          <div class="mt-4 pt-4 border-t">
+            <button id="btn-create-repo" class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+              + Create Repository
+            </button>
+          </div>
+        </div>
+
+        <!-- GitHub Loader -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Load from GitHub</h2>
+          
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Owner</label>
+              <input type="text" id="github-owner" placeholder="facebook" value="weolopez"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Repository</label>
+              <input type="text" id="github-repo" placeholder="react" value="aarchie-aardvark"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Branch (optional)</label>
+              <input type="text" id="github-branch" placeholder="main" value="main"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Local Name</label>
+              <input type="text" id="github-local-name" placeholder="react" 
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          
+          <button id="btn-load-github" class="w-full mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+            Load Repository
+          </button>
+          
+          <!-- Progress -->
+          <div id="github-progress" class="mt-4 hidden">
+            <div class="flex justify-between text-sm text-gray-600 mb-1">
+              <span id="progress-text">Loading...</span>
+              <span id="progress-percent">0%</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+              <div id="progress-bar" class="bg-green-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="progress-file" class="mt-1 text-xs text-gray-500 truncate"></div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Statistics</h2>
+          <div id="repo-stats" class="text-gray-500 text-center py-4">
+            Select a repository to view stats
+          </div>
+        </div>
+      </div>
+
+      <!-- File Browser -->
+      <div class="lg:col-span-2">
+        <div class="bg-white rounded-lg shadow-md h-full flex flex-col">
+          <!-- Toolbar -->
+          <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <div class="flex items-center gap-4">
+              <h2 class="text-xl font-semibold text-gray-800">Files</h2>
+              <span id="current-repo" class="text-sm text-gray-500"></span>
+            </div>
+            <div class="flex gap-2">
+              <button id="btn-new-file" class="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition text-sm">
+                New File
+              </button>
+              <button id="btn-new-folder" class="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition text-sm">
+                New Folder
+              </button>
+              <button id="btn-delete-repo" class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm">
+                Delete Repo
+              </button>
+            </div>
+          </div>
+          
+          <!-- Breadcrumb -->
+          <div class="px-6 py-2 bg-gray-50 border-b border-gray-200">
+            <div id="breadcrumb" class="flex items-center gap-2 text-sm">
+              <span class="text-gray-400">Select a repository</span>
+            </div>
+          </div>
+          
+          <!-- File List -->
+          <div id="file-list" class="flex-1 overflow-y-auto p-4">
+            <div class="text-gray-400 text-center py-8">
+              Select a repository to browse files
+            </div>
+          </div>
+          
+          <!-- File Content -->
+          <div id="file-content" class="hidden border-t border-gray-200">
+            <div class="px-4 py-2 bg-gray-100 border-b border-gray-200 flex justify-between items-center">
+              <span id="content-filename" class="font-mono text-sm"></span>
+              <div class="flex gap-2">
+                <button id="btn-save-file" class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700">
+                  Save
+                </button>
+                <button id="btn-close-file" class="px-3 py-1 bg-gray-300 text-gray-700 rounded text-sm hover:bg-gray-400">
+                  Close
+                </button>
+              </div>
+            </div>
+            <textarea id="content-editor" class="w-full h-64 p-4 font-mono text-sm resize-none focus:outline-none" placeholder="File content..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-4">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-lg font-semibold text-gray-300">Event Log</h3>
+        <button id="btn-clear-log" class="text-sm text-gray-400 hover:text-gray-200">Clear</button>
+      </div>
+      <div id="event-log" class="font-mono text-sm text-green-400 h-48 overflow-y-auto space-y-1">
+        <div class="text-gray-500">Events will appear here...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Repo Modal -->
+  <div id="create-repo-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+      <h3 class="text-xl font-semibold mb-4">Create Repository</h3>
+      <input type="text" id="new-repo-name" placeholder="Repository name" 
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4">
+      <div class="flex justify-end gap-3">
+        <button id="btn-cancel-create" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
+        <button id="btn-confirm-create" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { FileStore } from '../src/index.js';
+    import { EventBus } from '../../../core/event-bus/src/index.js';
+
+    // State
+    const eventBus = new EventBus();
+    const fileStore = new FileStore({ eventBus });
+    let currentRepo = null;
+    let currentPath = '';
+
+    // DOM Elements
+    const repoList = document.getElementById('repo-list');
+    const fileList = document.getElementById('file-list');
+    const breadcrumb = document.getElementById('breadcrumb');
+    const currentRepoLabel = document.getElementById('current-repo');
+    const eventLog = document.getElementById('event-log');
+    const fileContent = document.getElementById('file-content');
+    const contentEditor = document.getElementById('content-editor');
+    const contentFilename = document.getElementById('content-filename');
+
+    // Initialize
+    async function init() {
+      try {
+        await fileStore.initialize();
+        log('File Store initialized', 'success');
+        await loadRepos();
+        setupEventListeners();
+      } catch (error) {
+        log(`Error initializing: ${error.message}`, 'error');
+      }
+    }
+
+    // Log to event log
+    function log(message, type = 'info') {
+      const firstChild = eventLog.children[0];
+      if (firstChild && firstChild.classList.contains('text-gray-500')) {
+        eventLog.innerHTML = '';
+      }
+      
+      const entry = document.createElement('div');
+      const colors = {
+        info: 'text-gray-300',
+        success: 'text-green-400',
+        error: 'text-red-400',
+        event: 'text-blue-400'
+      };
+      const time = new Date().toLocaleTimeString();
+      entry.className = colors[type];
+      entry.textContent = `[${time}] ${message}`;
+      eventLog.appendChild(entry);
+      eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    // Subscribe to events
+    eventBus.subscribe('repo:created', (data) => log(`Repo created: ${data.repo}`, 'event'));
+    eventBus.subscribe('repo:deleted', (data) => log(`Repo deleted: ${data.repo}`, 'event'));
+    eventBus.subscribe('file:created', (data) => log(`File created: ${data.repo}/${data.path}`, 'event'));
+    eventBus.subscribe('file:updated', (data) => log(`File updated: ${data.repo}/${data.path}`, 'event'));
+    eventBus.subscribe('file:deleted', (data) => log(`File deleted: ${data.repo}/${data.path}`, 'event'));
+    eventBus.subscribe('repo:loading', (data) => log(`Loading from GitHub: ${data.owner}/${data.name}`, 'event'));
+    eventBus.subscribe('repo:loaded', (data) => log(`Repo loaded: ${data.repo} (${data.fileCount} files)`, 'success'));
+    eventBus.subscribe('repo:load-error', (data) => log(`Load error: ${data.error}`, 'error'));
+
+    // Load repositories
+    async function loadRepos() {
+      try {
+        const repos = await fileStore.listRepos();
+        
+        if (repos.length === 0) {
+          repoList.innerHTML = '<div class="text-gray-400 text-center py-4">No repositories</div>';
+          return;
+        }
+        
+        repoList.innerHTML = repos.map(repo => `
+          <div class="repo-item p-3 rounded-lg cursor-pointer transition ${repo.name === currentRepo ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'}" 
+               data-repo="${repo.name}">
+            <div class="font-medium text-gray-800">${repo.name}</div>
+            <div class="text-sm text-gray-500">
+              ${repo.fileCount} files • ${formatBytes(repo.totalSize)} • 
+              ${new Date(repo.modified).toLocaleDateString()}
+            </div>
+          </div>
+        `).join('');
+        
+        // Add click handlers
+        repoList.querySelectorAll('.repo-item').forEach(item => {
+          item.addEventListener('click', () => selectRepo(item.dataset.repo));
+        });
+      } catch (error) {
+        repoList.innerHTML = `<div class="text-red-500 text-center py-4">Error: ${error.message}</div>`;
+      }
+    }
+
+    // Select repository
+    async function selectRepo(name) {
+      currentRepo = name;
+      currentPath = '';
+      currentRepoLabel.textContent = name;
+      
+      // Update UI
+      repoList.querySelectorAll('.repo-item').forEach(item => {
+        if (item.dataset.repo === name) {
+          item.classList.add('bg-blue-50', 'border-blue-200');
+          item.classList.remove('hover:bg-gray-50', 'border-transparent');
+        } else {
+          item.classList.remove('bg-blue-50', 'border-blue-200');
+          item.classList.add('hover:bg-gray-50', 'border-transparent');
+        }
+      });
+      
+      await loadFiles();
+      await loadStats();
+    }
+
+    // Load files
+    async function loadFiles() {
+      if (!currentRepo) return;
+      
+      try {
+        const entries = await fileStore.list(currentRepo, currentPath);
+        
+        // Update breadcrumb
+        updateBreadcrumb();
+        
+        if (entries.length === 0) {
+          fileList.innerHTML = '<div class="text-gray-400 text-center py-8">Empty directory</div>';
+          return;
+        }
+        
+        // Sort: directories first, then alphabetically
+        entries.sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        
+        fileList.innerHTML = entries.map(entry => `
+          <div class="file-item flex items-center gap-3 p-3 rounded-lg cursor-pointer fade-in" 
+               data-path="${entry.path}" data-type="${entry.type}">
+            <span class="text-2xl">${entry.type === 'directory' ? '📁' : '📄'}</span>
+            <div class="flex-1">
+              <div class="font-medium text-gray-800">${entry.name}</div>
+              <div class="text-sm text-gray-500">
+                ${entry.type === 'file' && entry.size ? formatBytes(entry.size) : 'Directory'}
+              </div>
+            </div>
+          </div>
+        `).join('');
+        
+        // Add click handlers
+        fileList.querySelectorAll('.file-item').forEach(item => {
+          item.addEventListener('click', () => handleFileClick(item.dataset.path, item.dataset.type));
+        });
+      } catch (error) {
+        fileList.innerHTML = `<div class="text-red-500 text-center py-8">Error: ${error.message}</div>`;
+      }
+    }
+
+    // Handle file/directory click
+    async function handleFileClick(path, type) {
+      if (type === 'directory') {
+        currentPath = path;
+        await loadFiles();
+      } else {
+        await openFile(path);
+      }
+    }
+
+    // Open file
+    async function openFile(path) {
+      try {
+        const content = await fileStore.read(currentRepo, path);
+        contentEditor.value = content;
+        contentFilename.textContent = path;
+        fileContent.classList.remove('hidden');
+        fileList.classList.add('hidden');
+      } catch (error) {
+        log(`Error reading file: ${error.message}`, 'error');
+      }
+    }
+
+    // Update breadcrumb
+    function updateBreadcrumb() {
+      const parts = currentPath ? currentPath.split('/') : [];
+      let html = `<span class="breadcrumb-item cursor-pointer text-blue-600 hover:underline" data-path="">${currentRepo}</span>`;
+      
+      let accumulatedPath = '';
+      for (const part of parts) {
+        accumulatedPath += (accumulatedPath ? '/' : '') + part;
+        html += ` <span class="text-gray-400">/</span> <span class="breadcrumb-item cursor-pointer text-blue-600 hover:underline" data-path="${accumulatedPath}">${part}</span>`;
+      }
+      
+      breadcrumb.innerHTML = html;
+      
+      // Add click handlers
+      breadcrumb.querySelectorAll('.breadcrumb-item').forEach(item => {
+        item.addEventListener('click', () => {
+          currentPath = item.dataset.path;
+          loadFiles();
+        });
+      });
+    }
+
+    // Load stats
+    async function loadStats() {
+      if (!currentRepo) return;
+      
+      try {
+        const stats = await fileStore.getRepoStats(currentRepo);
+        const languages = Array.from(stats.languages.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5);
+        
+        document.getElementById('repo-stats').innerHTML = `
+          <div class="grid grid-cols-2 gap-4 text-center">
+            <div class="bg-blue-50 p-3 rounded">
+              <div class="text-2xl font-bold text-blue-600">${stats.fileCount}</div>
+              <div class="text-sm text-gray-600">Files</div>
+            </div>
+            <div class="bg-green-50 p-3 rounded">
+              <div class="text-2xl font-bold text-green-600">${stats.directoryCount}</div>
+              <div class="text-sm text-gray-600">Directories</div>
+            </div>
+          </div>
+          <div class="mt-4">
+            <div class="text-sm font-medium text-gray-700 mb-2">Size: ${formatBytes(stats.totalSize)}</div>
+            ${languages.length > 0 ? `
+              <div class="text-sm font-medium text-gray-700 mb-1">Top Languages:</div>
+              <div class="flex flex-wrap gap-2">
+                ${languages.map(([lang, count]) => `
+                  <span class="px-2 py-1 bg-gray-100 rounded text-xs text-gray-600">${lang}: ${count}</span>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } catch (error) {
+        document.getElementById('repo-stats').innerHTML = `<div class="text-red-500">Error: ${error.message}</div>`;
+      }
+    }
+
+    // Format bytes
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+      // Refresh repos
+      document.getElementById('btn-refresh-repos').addEventListener('click', loadRepos);
+      
+      // Create repo
+      document.getElementById('btn-create-repo').addEventListener('click', () => {
+        document.getElementById('create-repo-modal').classList.remove('hidden');
+        document.getElementById('new-repo-name').focus();
+      });
+      
+      document.getElementById('btn-cancel-create').addEventListener('click', () => {
+        document.getElementById('create-repo-modal').classList.add('hidden');
+      });
+      
+      document.getElementById('btn-confirm-create').addEventListener('click', async () => {
+        const name = document.getElementById('new-repo-name').value.trim();
+        if (name) {
+          try {
+            await fileStore.createRepo(name);
+            document.getElementById('create-repo-modal').classList.add('hidden');
+            document.getElementById('new-repo-name').value = '';
+            await loadRepos();
+            await selectRepo(name);
+          } catch (error) {
+            log(`Error creating repo: ${error.message}`, 'error');
+          }
+        }
+      });
+      
+      // Delete repo
+      document.getElementById('btn-delete-repo').addEventListener('click', async () => {
+        if (!currentRepo) return;
+        if (confirm(`Delete repository "${currentRepo}"? This cannot be undone.`)) {
+          try {
+            await fileStore.deleteRepo(currentRepo);
+            currentRepo = null;
+            currentPath = '';
+            currentRepoLabel.textContent = '';
+            fileList.innerHTML = '<div class="text-gray-400 text-center py-8">Select a repository to browse files</div>';
+            breadcrumb.innerHTML = '<span class="text-gray-400">Select a repository</span>';
+            document.getElementById('repo-stats').innerHTML = '<div class="text-gray-500 text-center py-4">Select a repository to view stats</div>';
+            await loadRepos();
+          } catch (error) {
+            log(`Error deleting repo: ${error.message}`, 'error');
+          }
+        }
+      });
+      
+      // Load from GitHub
+      document.getElementById('btn-load-github').addEventListener('click', async () => {
+        const owner = document.getElementById('github-owner').value.trim();
+        const repo = document.getElementById('github-repo').value.trim();
+        const branch = document.getElementById('github-branch').value.trim() || 'main';
+        const localName = document.getElementById('github-local-name').value.trim() || repo;
+        
+        if (!owner || !repo) {
+          log('Please enter owner and repository', 'error');
+          return;
+        }
+        
+        const progressDiv = document.getElementById('github-progress');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressFile = document.getElementById('progress-file');
+        
+        progressDiv.classList.remove('hidden');
+        
+        try {
+          await fileStore.loadFromGitHub(localName, owner, repo, branch, {
+            onProgress: (progress) => {
+              progressBar.style.width = `${progress.percentage}%`;
+              progressText.textContent = `Loading ${progress.loadedFiles} of ${progress.totalFiles} files`;
+              progressPercent.textContent = `${progress.percentage}%`;
+              progressFile.textContent = progress.currentFile;
+            }
+          });
+          
+          await loadRepos();
+          await selectRepo(localName);
+          
+          setTimeout(() => {
+            progressDiv.classList.add('hidden');
+          }, 2000);
+        } catch (error) {
+          log(`Error loading from GitHub: ${error.message}`, 'error');
+          progressDiv.classList.add('hidden');
+        }
+      });
+      
+      // New file
+      document.getElementById('btn-new-file').addEventListener('click', () => {
+        if (!currentRepo) return;
+        const filename = prompt('Enter file name:');
+        if (filename) {
+          const path = currentPath ? `${currentPath}/${filename}` : filename;
+          contentEditor.value = '';
+          contentFilename.textContent = path;
+          fileContent.classList.remove('hidden');
+          fileList.classList.add('hidden');
+        }
+      });
+      
+      // Save file
+      document.getElementById('btn-save-file').addEventListener('click', async () => {
+        const path = contentFilename.textContent;
+        const content = contentEditor.value;
+        
+        try {
+          await fileStore.write(currentRepo, path, content);
+          log(`File saved: ${path}`, 'success');
+          fileContent.classList.add('hidden');
+          fileList.classList.remove('hidden');
+          await loadFiles();
+          await loadStats();
+        } catch (error) {
+          log(`Error saving file: ${error.message}`, 'error');
+        }
+      });
+      
+      // Close file
+      document.getElementById('btn-close-file').addEventListener('click', () => {
+        fileContent.classList.add('hidden');
+        fileList.classList.remove('hidden');
+      });
+      
+      // New folder
+      document.getElementById('btn-new-folder').addEventListener('click', async () => {
+        if (!currentRepo) return;
+        const folderName = prompt('Enter folder name:');
+        if (folderName) {
+          try {
+            const path = currentPath ? `${currentPath}/${folderName}` : folderName;
+            const fullPath = `${path}/.gitkeep`;
+            await fileStore.write(currentRepo, fullPath, '');
+            await loadFiles();
+          } catch (error) {
+            log(`Error creating folder: ${error.message}`, 'error');
+          }
+        }
+      });
+      
+      // Clear log
+      document.getElementById('btn-clear-log').addEventListener('click', () => {
+        eventLog.innerHTML = '<div class="text-gray-500">Events will appear here...</div>';
+      });
+    }
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

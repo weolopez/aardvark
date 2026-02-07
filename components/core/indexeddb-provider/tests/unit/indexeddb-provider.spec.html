@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IndexedDB Provider Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">IndexedDB Provider Unit Tests</h1>
+      <p class="text-gray-600 mt-2">Testing structured data storage operations</p>
+    </header>
+
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div><span class="text-gray-600">Total:</span><span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span></div>
+        <div><span class="text-green-600">Passed:</span><span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span></div>
+        <div><span class="text-red-600">Failed:</span><span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span></div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200">Running...</div>
+      </div>
+    </div>
+
+    <div id="test-results" class="space-y-3"></div>
+
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold text-gray-300 mb-4">Console Output</h2>
+      <div id="console-output" class="font-mono text-sm text-green-400 space-y-1 max-h-64 overflow-y-auto">
+        <div class="text-gray-500">Starting tests...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { IndexedDBProvider } from '../../src/index.js';
+
+    // Test schema - all stores defined upfront
+    const testSchema = [
+      { name: 'test-store', keyPath: 'id' },
+      { name: 'items', keyPath: 'id' },
+      { name: 'keys-test', keyPath: 'id' },
+      { name: 'values-test', keyPath: 'id' },
+      { name: 'delete-test', keyPath: 'id' },
+      { name: 'clear-test', keyPath: 'id' },
+      { name: 'sub-test', keyPath: 'id' },
+      { name: 'key-sub-test', keyPath: 'id' },
+      { name: 'complex-test', keyPath: 'id' }
+    ];
+
+    class TestRunner {
+      constructor() {
+        this.tests = [];
+        this.passCount = 0;
+        this.failCount = 0;
+      }
+
+      test(name, fn) {
+        this.tests.push({ name, fn });
+      }
+
+      async runAll() {
+        const db = new IndexedDBProvider('test-db', Date.now());
+        
+        // Initialize with all test stores first
+        await db.initialize(testSchema);
+        
+        for (const test of this.tests) {
+          await this.runTest(test, db);
+        }
+        this.showSummary();
+      }
+
+      async runTest(test, db) {
+        const resultEl = this.createResultElement(test.name);
+        try {
+          await test.fn(db);
+          this.passCount++;
+          this.markPassed(resultEl);
+          this.log('OK: ' + test.name, 'success');
+        } catch (error) {
+          this.failCount++;
+          this.markFailed(resultEl, error);
+          this.log('FAIL: ' + test.name + ' - ' + error.message, 'error');
+        }
+      }
+
+      createResultElement(name) {
+        const container = document.getElementById('test-results');
+        const el = document.createElement('div');
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-gray-300';
+        el.innerHTML = '<div class="flex items-center"><span class="mr-3">...</span><span class="font-medium">' + name + '</span></div><div class="test-error mt-2 text-sm text-red-600 hidden"></div>';
+        container.appendChild(el);
+        return el;
+      }
+
+      markPassed(el) {
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-green-500 bg-green-50';
+        el.querySelector('span').textContent = 'OK';
+      }
+
+      markFailed(el, error) {
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-red-500 bg-red-50';
+        el.querySelector('span').textContent = 'FAIL';
+        el.querySelector('.test-error').textContent = error.message;
+        el.querySelector('.test-error').classList.remove('hidden');
+      }
+
+      log(message, type) {
+        const consoleEl = document.getElementById('console-output');
+        const line = document.createElement('div');
+        line.className = type === 'error' ? 'text-red-400' : 'text-green-400';
+        line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      showSummary() {
+        document.getElementById('total-count').textContent = this.tests.length;
+        document.getElementById('pass-count').textContent = this.passCount;
+        document.getElementById('fail-count').textContent = this.failCount;
+        const badge = document.getElementById('status-badge');
+        if (this.failCount === 0) {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+          badge.textContent = 'All Tests Passed!';
+        } else {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+          badge.textContent = this.failCount + ' Tests Failed';
+        }
+        
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
+      }
+    }
+
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) throw new Error(message + ': expected ' + expected + ', got ' + actual);
+    }
+
+    function assertTrue(value, message) {
+      if (!value) throw new Error(message || 'Expected true');
+    }
+
+    const runner = new TestRunner();
+
+    runner.test('Initialize database with schema', async (db) => {
+      // Database already initialized in runAll, just verify it's ready
+      assertTrue(db.db !== null, 'Database should be initialized');
+    });
+
+    runner.test('Set and get value', async (db) => {
+      await db.set('items', 'key-1', { id: 'key-1', name: 'Test' });
+      const value = await db.get('items', 'key-1');
+      assertEqual(value.name, 'Test', 'Value should match');
+    });
+
+    runner.test('Get all keys', async (db) => {
+      await db.set('keys-test', 'a', { id: 'a' });
+      await db.set('keys-test', 'b', { id: 'b' });
+      const keys = await db.getAllKeys('keys-test');
+      assertEqual(keys.length, 2, 'Should have 2 keys');
+    });
+
+    runner.test('Get all values', async (db) => {
+      await db.set('values-test', '1', { id: '1', data: 'one' });
+      await db.set('values-test', '2', { id: '2', data: 'two' });
+      const values = await db.getAll('values-test');
+      assertEqual(values.length, 2, 'Should have 2 values');
+    });
+
+    runner.test('Delete value', async (db) => {
+      await db.set('delete-test', 'del-key', { id: 'del-key' });
+      await db.delete('delete-test', 'del-key');
+      const value = await db.get('delete-test', 'del-key');
+      assertEqual(value, undefined, 'Value should be undefined after delete');
+    });
+
+    runner.test('Clear store', async (db) => {
+      await db.set('clear-test', 'a', { id: 'a' });
+      await db.set('clear-test', 'b', { id: 'b' });
+      await db.clear('clear-test');
+      const keys = await db.getAllKeys('clear-test');
+      assertEqual(keys.length, 0, 'Store should be empty');
+    });
+
+    runner.test('Store subscription', async (db) => {
+      let received = false;
+      const unsubscribe = db.subscribe('sub-test', (change) => {
+        if (change.key === 'sub-key') received = true;
+      });
+      await db.set('sub-test', 'sub-key', { id: 'sub-key' });
+      // Give a small delay for the subscription callback
+      await new Promise(resolve => setTimeout(resolve, 10));
+      unsubscribe();
+      assertTrue(received, 'Subscriber should be notified');
+    });
+
+    runner.test('Key-specific subscription', async (db) => {
+      let received = false;
+      const unsubscribe = db.subscribeKey('key-sub-test', 'specific-key', (value) => {
+        received = true;
+      });
+      await db.set('key-sub-test', 'specific-key', { id: 'specific-key' });
+      // Give a small delay for the subscription callback
+      await new Promise(resolve => setTimeout(resolve, 10));
+      unsubscribe();
+      assertTrue(received, 'Key subscriber should be notified');
+    });
+
+    runner.test('Complex data structures', async (db) => {
+      const complex = {
+        id: 'complex',
+        nested: { a: 1, b: [2, 3] },
+        array: [1, 2, 3],
+        date: new Date().toISOString()
+      };
+      await db.set('complex-test', 'complex', complex);
+      const retrieved = await db.get('complex-test', 'complex');
+      assertEqual(retrieved.nested.a, 1, 'Nested data should match');
+      assertEqual(retrieved.array.length, 3, 'Array should match');
+    });
+
+    runner.runAll();
+  </script>
+</body>
+</html>

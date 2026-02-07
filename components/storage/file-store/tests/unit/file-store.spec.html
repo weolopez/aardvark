@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Store Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">File Store Unit Tests</h1>
+      <p class="text-gray-600 mt-2">Testing repository file management</p>
+    </header>
+
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <span class="text-gray-600">Total:</span>
+          <span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-green-600">Passed:</span>
+          <span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-red-600">Failed:</span>
+          <span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span>
+        </div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200">Running...</div>
+      </div>
+    </div>
+
+    <div id="test-results" class="space-y-3"></div>
+
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold text-gray-300 mb-4">Console Output</h2>
+      <div id="console-output" class="font-mono text-sm text-green-400 space-y-1 max-h-64 overflow-y-auto">
+        <div class="text-gray-500">Starting tests...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { FileStore } from '../../src/index.js';
+
+    class TestRunner {
+      constructor() {
+        this.tests = [];
+        this.passCount = 0;
+        this.failCount = 0;
+      }
+
+      test(name, fn) {
+        this.tests.push({ name, fn });
+      }
+
+      async runAll() {
+        const store = new FileStore();
+        
+        // Cleanup before starting
+        try {
+          await store.initialize();
+          const repos = await store.listRepos();
+          for (const repo of repos) {
+            await store.deleteRepo(repo.name);
+          }
+        } catch (e) {
+          console.error("Cleanup error", e);
+        }
+
+        for (const test of this.tests) {
+          await this.runTest(test, store);
+        }
+        this.showSummary();
+      }
+
+      async runTest(test, store) {
+        const resultEl = this.createResultElement(test.name);
+        try {
+          await test.fn(store);
+          this.passCount++;
+          this.markPassed(resultEl);
+          this.log('✓ ' + test.name, 'success');
+        } catch (error) {
+          this.failCount++;
+          this.markFailed(resultEl, error);
+          this.log('✗ ' + test.name + ': ' + error.message, 'error');
+        }
+      }
+
+      createResultElement(name) {
+        const container = document.getElementById('test-results');
+        const el = document.createElement('div');
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-gray-300';
+        el.innerHTML = '<div class="flex items-center"><span class="mr-3">⏳</span><span class="font-medium">' + name + '</span></div><div class="test-error mt-2 text-sm text-red-600 hidden"></div>';
+        container.appendChild(el);
+        return el;
+      }
+
+      markPassed(el) {
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-green-500 bg-green-50';
+        el.querySelector('span').textContent = '✓';
+      }
+
+      markFailed(el, error) {
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-red-500 bg-red-50';
+        el.querySelector('span').textContent = '✗';
+        el.querySelector('.test-error').textContent = error.message;
+        el.querySelector('.test-error').classList.remove('hidden');
+      }
+
+      log(message, type) {
+        const consoleEl = document.getElementById('console-output');
+        const line = document.createElement('div');
+        line.className = type === 'error' ? 'text-red-400' : 'text-green-400';
+        line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      showSummary() {
+        document.getElementById('total-count').textContent = this.tests.length;
+        document.getElementById('pass-count').textContent = this.passCount;
+        document.getElementById('fail-count').textContent = this.failCount;
+        const badge = document.getElementById('status-badge');
+        if (this.failCount === 0) {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+          badge.textContent = 'All Tests Passed!';
+        } else {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+          badge.textContent = this.failCount + ' Tests Failed';
+        }
+      }
+    }
+
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) throw new Error(message + ': expected ' + expected + ', got ' + actual);
+    }
+
+    function assertTrue(value, message) {
+      if (!value) throw new Error(message || 'Expected true');
+    }
+
+    const runner = new TestRunner();
+
+    runner.test('Initialize FileStore', async (store) => {
+      await store.initialize();
+      // No crash means success
+    });
+
+    runner.test('Create Repository', async (store) => {
+      await store.createRepo('test-repo');
+      const repos = await store.listRepos();
+      assertTrue(repos.some(r => r.name === 'test-repo'), 'Repo should exist');
+    });
+
+    runner.test('Write File to Repo', async (store) => {
+      await store.write('test-repo', 'hello.txt', 'Hello World');
+      const exists = await store.exists('test-repo', 'hello.txt');
+      assertTrue(exists, 'File should exist');
+    });
+
+    runner.test('Read File from Repo', async (store) => {
+      const content = await store.read('test-repo', 'hello.txt');
+      assertEqual(content, 'Hello World', 'Content should match');
+    });
+
+    runner.test('Update File in Repo', async (store) => {
+      await store.write('test-repo', 'hello.txt', 'Updated Content');
+      const content = await store.read('test-repo', 'hello.txt');
+      assertEqual(content, 'Updated Content', 'Content should be updated');
+    });
+
+    runner.test('List Files in Repo', async (store) => {
+      const files = await store.list('test-repo');
+      assertTrue(files.some(f => f.name === 'hello.txt'), 'Should find hello.txt');
+    });
+
+    runner.test('Repo Stats', async (store) => {
+      const stats = await store.getRepoStats('test-repo');
+      assertEqual(stats.fileCount, 1, 'Should have 1 file');
+    });
+
+    runner.test('Glob Pattern Matching', async (store) => {
+      await store.write('test-repo', 'src/main.rs', 'fn main() {}');
+      await store.write('test-repo', 'src/lib.rs', 'pub fn test() {}');
+      await store.write('test-repo', 'readme.md', '# Readme');
+
+      const rsFiles = await store.glob('test-repo', '**/*.rs');
+      assertEqual(rsFiles.length, 2, 'Should find 2 .rs files');
+      assertTrue(rsFiles.includes('src/main.rs'), 'Should find main.rs');
+      assertTrue(rsFiles.includes('src/lib.rs'), 'Should find lib.rs');
+    });
+
+    runner.test('Delete File', async (store) => {
+      await store.delete('test-repo', 'hello.txt');
+      const exists = await store.exists('test-repo', 'hello.txt');
+      assertTrue(!exists, 'File should be deleted');
+    });
+
+    runner.test('Delete Repository', async (store) => {
+      await store.deleteRepo('test-repo');
+      const repos = await store.listRepos();
+      assertTrue(!repos.some(r => r.name === 'test-repo'), 'Repo should be gone');
+    });
+
+    runner.runAll();
+  </script>
+</body>
+</html>

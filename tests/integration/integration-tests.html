@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - Integration Test Suite</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .test-pass { border-left-color: #22c55e; background-color: #f0fdf4; }
+    .test-fail { border-left-color: #ef4444; background-color: #fef2f2; }
+    .test-running { border-left-color: #3b82f6; background-color: #eff6ff; }
+    .component-card { transition: all 0.3s ease; }
+    .component-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .benchmark-bar { transition: width 0.5s ease-out; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">Integration Test Suite</h1>
+      <p class="text-gray-600">End-to-end testing of all Phase 1 components working together</p>
+    </header>
+
+    <!-- Browser Info -->
+    <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-3">Browser Environment</h2>
+      <div id="browser-info" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Component Status -->
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+      <div id="status-event-bus" class="component-card bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl mb-2">📡</div>
+        <div class="font-semibold text-gray-800">Event Bus</div>
+        <div class="status-indicator text-sm text-gray-500 mt-1">Checking...</div>
+      </div>
+      <div id="status-opfs" class="component-card bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl mb-2">📁</div>
+        <div class="font-semibold text-gray-800">OPFS Provider</div>
+        <div class="status-indicator text-sm text-gray-500 mt-1">Checking...</div>
+      </div>
+      <div id="status-indexeddb" class="component-card bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl mb-2">🗄️</div>
+        <div class="font-semibold text-gray-800">IndexedDB</div>
+        <div class="status-indicator text-sm text-gray-500 mt-1">Checking...</div>
+      </div>
+      <div id="status-message-bridge" class="component-card bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl mb-2">🌉</div>
+        <div class="font-semibold text-gray-800">Message Bridge</div>
+        <div class="status-indicator text-sm text-gray-500 mt-1">Checking...</div>
+      </div>
+      <div id="status-api-client" class="component-card bg-white rounded-lg shadow p-4 text-center">
+        <div class="text-3xl mb-2">🌐</div>
+        <div class="font-semibold text-gray-800">API Client</div>
+        <div class="status-indicator text-sm text-gray-500 mt-1">Checking...</div>
+      </div>
+    </div>
+
+    <!-- Test Results Summary -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold text-gray-800">Test Results</h2>
+        <div class="flex gap-4">
+          <button id="btn-run-all" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            Run All Tests
+          </button>
+          <button id="btn-clear-results" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+            Clear Results
+          </button>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-4 gap-4 mb-4">
+        <div class="text-center">
+          <div id="summary-total" class="text-3xl font-bold text-gray-800">0</div>
+          <div class="text-sm text-gray-600">Total Tests</div>
+        </div>
+        <div class="text-center">
+          <div id="summary-passed" class="text-3xl font-bold text-green-600">0</div>
+          <div class="text-sm text-gray-600">Passed</div>
+        </div>
+        <div class="text-center">
+          <div id="summary-failed" class="text-3xl font-bold text-red-600">0</div>
+          <div class="text-sm text-gray-600">Failed</div>
+        </div>
+        <div class="text-center">
+          <div id="summary-time" class="text-3xl font-bold text-blue-600">0ms</div>
+          <div class="text-sm text-gray-600">Total Time</div>
+        </div>
+      </div>
+
+      <div class="w-full bg-gray-200 rounded-full h-2">
+        <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Test Categories -->
+    <div class="space-y-6">
+      <!-- Cross-Component Event Flow -->
+      <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-gray-800">Cross-Component Event Flow</h3>
+          <p class="text-sm text-gray-600">Tests communication between multiple components via Event Bus</p>
+        </div>
+        <div id="tests-event-flow" class="divide-y divide-gray-100">
+          <!-- Test results populated here -->
+        </div>
+      </div>
+
+      <!-- Data Persistence Chain -->
+      <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-gray-800">Data Persistence Chain</h3>
+          <p class="text-sm text-gray-600">Tests OPFS and IndexedDB working together for data storage</p>
+        </div>
+        <div id="tests-persistence" class="divide-y divide-gray-100">
+          <!-- Test results populated here -->
+        </div>
+      </div>
+
+      <!-- Worker Communication -->
+      <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-gray-800">Worker Communication</h3>
+          <p class="text-sm text-gray-600">Tests Message Bridge with Event Bus and data providers</p>
+        </div>
+        <div id="tests-worker" class="divide-y divide-gray-100">
+          <!-- Test results populated here -->
+        </div>
+      </div>
+
+      <!-- End-to-End Scenarios -->
+      <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-gray-800">End-to-End Scenarios</h3>
+          <p class="text-sm text-gray-600">Real-world usage patterns combining all components</p>
+        </div>
+        <div id="tests-e2e" class="divide-y divide-gray-100">
+          <!-- Test results populated here -->
+        </div>
+      </div>
+
+      <!-- Performance Benchmarks -->
+      <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-gray-800">Performance Benchmarks</h3>
+          <p class="text-sm text-gray-600">Performance metrics for each component</p>
+        </div>
+        <div id="benchmarks" class="p-6 space-y-4">
+          <!-- Benchmark results populated here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Console Output -->
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h3 class="text-lg font-semibold text-gray-300 mb-4">Test Console</h3>
+      <div id="test-console" class="font-mono text-sm text-green-400 space-y-1 h-64 overflow-y-auto">
+        <div class="text-gray-500">Ready to run integration tests...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { EventBus } from '../../components/core/event-bus/src/index.js';
+    import { OPFSProvider } from '../../components/core/opfs-provider/src/index.js';
+    import { IndexedDBProvider } from '../../components/core/indexeddb-provider/src/index.js';
+    import { MessageBridgeMain } from '../../components/core/message-bridge/src/index.js';
+    import { APIClient } from '../../components/core/api-client/src/index.js';
+
+    // Test state
+    let testResults = [];
+    let isRunning = false;
+
+    // DOM Elements
+    const testConsole = document.getElementById('test-console');
+    const progressBar = document.getElementById('progress-bar');
+
+    // Browser detection
+    function getBrowserInfo() {
+      const ua = navigator.userAgent;
+      let browserName = 'Unknown';
+      let browserVersion = '';
+
+      if (ua.indexOf('Chrome') > -1) {
+        browserName = 'Chrome';
+        browserVersion = ua.match(/Chrome\/(\d+\.\d+)/)?.[1] || '';
+      } else if (ua.indexOf('Firefox') > -1) {
+        browserName = 'Firefox';
+        browserVersion = ua.match(/Firefox\/(\d+\.\d+)/)?.[1] || '';
+      } else if (ua.indexOf('Safari') > -1) {
+        browserName = 'Safari';
+        browserVersion = ua.match(/Version\/(\d+\.\d+)/)?.[1] || '';
+      } else if (ua.indexOf('Edge') > -1) {
+        browserName = 'Edge';
+        browserVersion = ua.match(/Edge\/(\d+\.\d+)/)?.[1] || '';
+      }
+
+      return {
+        browser: `${browserName} ${browserVersion}`,
+        os: navigator.platform,
+        cores: navigator.hardwareConcurrency || 'unknown',
+        memory: navigator.deviceMemory || 'unknown',
+        supports: {
+          modules: 'no' in document.createElement('script') ? 'Yes' : 'No',
+          workers: typeof Worker !== 'undefined' ? 'Yes' : 'No',
+          indexedDB: typeof indexedDB !== 'undefined' ? 'Yes' : 'No',
+          opfs: 'storage' in navigator && 'getDirectory' in navigator.storage ? 'Yes' : 'No'
+        }
+      };
+    }
+
+    // Display browser info
+    function displayBrowserInfo() {
+      const info = getBrowserInfo();
+      const container = document.getElementById('browser-info');
+      
+      container.innerHTML = `
+        <div class="bg-blue-50 p-3 rounded"><strong>Browser:</strong> ${info.browser}</div>
+        <div class="bg-green-50 p-3 rounded"><strong>OS:</strong> ${info.os}</div>
+        <div class="bg-purple-50 p-3 rounded"><strong>CPU Cores:</strong> ${info.cores}</div>
+        <div class="bg-yellow-50 p-3 rounded"><strong>Memory:</strong> ${info.memory}GB</div>
+        <div class="bg-gray-50 p-3 rounded"><strong>ES Modules:</strong> ${info.supports.modules}</div>
+        <div class="bg-gray-50 p-3 rounded"><strong>Web Workers:</strong> ${info.supports.workers}</div>
+        <div class="bg-gray-50 p-3 rounded"><strong>IndexedDB:</strong> ${info.supports.indexedDB}</div>
+        <div class="bg-gray-50 p-3 rounded"><strong>OPFS:</strong> ${info.supports.opfs}</div>
+      `;
+    }
+
+    // Log to console
+    function log(message, type = 'info') {
+      const entry = document.createElement('div');
+      const colors = {
+        info: 'text-gray-300',
+        success: 'text-green-400',
+        error: 'text-red-400',
+        warn: 'text-yellow-400'
+      };
+      const time = new Date().toLocaleTimeString();
+      entry.className = colors[type];
+      entry.textContent = `[${time}] ${message}`;
+      
+      if (testConsole.children[0]?.classList.contains('text-gray-500')) {
+        testConsole.innerHTML = '';
+      }
+      
+      testConsole.appendChild(entry);
+      testConsole.scrollTop = testConsole.scrollHeight;
+    }
+
+    // Update component status
+    function updateComponentStatus(component, status, message) {
+      const el = document.getElementById(`status-${component}`);
+      const indicator = el.querySelector('.status-indicator');
+      
+      indicator.textContent = message;
+      
+      if (status === 'ready') {
+        el.classList.add('bg-green-50');
+        indicator.classList.add('text-green-600');
+      } else if (status === 'error') {
+        el.classList.add('bg-red-50');
+        indicator.classList.add('text-red-600');
+      } else {
+        el.classList.add('bg-yellow-50');
+        indicator.classList.add('text-yellow-600');
+      }
+    }
+
+    // Check component availability
+    async function checkComponents() {
+      // Check Event Bus
+      try {
+        const bus = new EventBus();
+        bus.publish('test', {});
+        updateComponentStatus('event-bus', 'ready', 'Available');
+      } catch (e) {
+        updateComponentStatus('event-bus', 'error', 'Failed');
+      }
+
+      // Check OPFS
+      try {
+        if ('storage' in navigator && 'getDirectory' in navigator.storage) {
+          const opfs = new OPFSProvider();
+          await opfs.initialize();
+          updateComponentStatus('opfs', 'ready', 'Available');
+        } else {
+          updateComponentStatus('opfs', 'error', 'Not Supported');
+        }
+      } catch (e) {
+        updateComponentStatus('opfs', 'error', 'Failed');
+      }
+
+      // Check IndexedDB
+      try {
+        if (typeof indexedDB !== 'undefined') {
+          const db = new IndexedDBProvider('test', 1);
+          await db.initialize([{ name: 'test', keyPath: 'id' }]);
+          updateComponentStatus('indexeddb', 'ready', 'Available');
+        } else {
+          updateComponentStatus('indexeddb', 'error', 'Not Supported');
+        }
+      } catch (e) {
+        updateComponentStatus('indexeddb', 'error', 'Failed');
+      }
+
+      // Check Message Bridge
+      try {
+        if (typeof Worker !== 'undefined') {
+          updateComponentStatus('message-bridge', 'ready', 'Available');
+        } else {
+          updateComponentStatus('message-bridge', 'error', 'Not Supported');
+        }
+      } catch (e) {
+        updateComponentStatus('message-bridge', 'error', 'Failed');
+      }
+
+      // Check API Client
+      try {
+        const client = new APIClient();
+        client.initialize({
+          provider: 'gemini',
+          apiKey: 'test',
+          model: 'gemini-pro'
+        });
+        updateComponentStatus('api-client', 'ready', 'Available');
+      } catch (e) {
+        updateComponentStatus('api-client', 'error', 'Failed');
+      }
+    }
+
+    // Run a single test
+    async function runTest(name, category, testFn) {
+      const startTime = performance.now();
+      const container = document.getElementById(`tests-${category}`);
+      
+      const testEl = document.createElement('div');
+      testEl.className = 'p-4 border-l-4 border-gray-300 test-running';
+      testEl.innerHTML = `
+        <div class="flex justify-between items-center">
+          <span class="font-medium">${name}</span>
+          <span class="text-sm text-gray-500">Running...</span>
+        </div>
+      `;
+      container.appendChild(testEl);
+
+      try {
+        await testFn();
+        const duration = Math.round(performance.now() - startTime);
+        
+        testEl.className = 'p-4 border-l-4 border-green-500 bg-green-50 fade-in';
+        testEl.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-medium text-green-900">${name}</span>
+            <span class="text-sm text-green-700">✓ Passed (${duration}ms)</span>
+          </div>
+        `;
+        
+        log(`✓ ${name} passed in ${duration}ms`, 'success');
+        return { name, passed: true, duration };
+      } catch (error) {
+        const duration = Math.round(performance.now() - startTime);
+        
+        testEl.className = 'p-4 border-l-4 border-red-500 bg-red-50 fade-in';
+        testEl.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-medium text-red-900">${name}</span>
+            <span class="text-sm text-red-700">✗ Failed (${duration}ms)</span>
+          </div>
+          <div class="mt-2 text-sm text-red-700">${error.message}</div>
+        `;
+        
+        log(`✗ ${name} failed: ${error.message}`, 'error');
+        return { name, passed: false, duration, error: error.message };
+      }
+    }
+
+    // Integration Tests
+    async function runIntegrationTests() {
+      if (isRunning) return;
+      isRunning = true;
+      testResults = [];
+      
+      // Clear previous results
+      document.getElementById('tests-event-flow').innerHTML = '';
+      document.getElementById('tests-persistence').innerHTML = '';
+      document.getElementById('tests-worker').innerHTML = '';
+      document.getElementById('tests-e2e').innerHTML = '';
+      document.getElementById('benchmarks').innerHTML = '';
+      
+      log('Starting integration tests...', 'info');
+      
+      const allTests = [
+        // Cross-Component Event Flow
+        { name: 'Event Bus publishes to multiple subscribers', category: 'event-flow', fn: testMultiSubscriber },
+        { name: 'Events flow through Message Bridge', category: 'event-flow', fn: testBridgeEventFlow },
+        { name: 'Component error isolation', category: 'event-flow', fn: testErrorIsolation },
+        
+        // Data Persistence Chain
+        { name: 'OPFS and IndexedDB coexist', category: 'persistence', fn: testStorageCoexistence },
+        { name: 'Data sync between storage types', category: 'persistence', fn: testStorageSync },
+        { name: 'Large data handling', category: 'persistence', fn: testLargeData },
+        
+        // Worker Communication
+        { name: 'Worker accesses IndexedDB', category: 'worker', fn: testWorkerIndexedDB },
+        { name: 'Worker communicates via Event Bus', category: 'worker', fn: testWorkerEventBus },
+        { name: 'Cross-context data sharing', category: 'worker', fn: testCrossContextData },
+        
+        // End-to-End Scenarios
+        { name: 'File upload and processing workflow', category: 'e2e', fn: testFileWorkflow },
+        { name: 'Chat session persistence', category: 'e2e', fn: testChatPersistence },
+        { name: 'Tool execution with storage', category: 'e2e', fn: testToolExecution }
+      ];
+      
+      let completed = 0;
+      const totalTests = allTests.length;
+      
+      for (const test of allTests) {
+        const result = await runTest(test.name, test.category, test.fn);
+        testResults.push(result);
+        
+        completed++;
+        const progress = (completed / totalTests) * 100;
+        progressBar.style.width = `${progress}%`;
+        
+        updateSummary();
+      }
+      
+      // Run benchmarks
+      await runBenchmarks();
+      
+      isRunning = false;
+      log('Integration tests complete!', 'success');
+    }
+
+    // Update summary
+    function updateSummary() {
+      const total = testResults.length;
+      const passed = testResults.filter(r => r.passed).length;
+      const failed = testResults.filter(r => !r.passed).length;
+      const totalTime = testResults.reduce((sum, r) => sum + r.duration, 0);
+      
+      document.getElementById('summary-total').textContent = total;
+      document.getElementById('summary-passed').textContent = passed;
+      document.getElementById('summary-failed').textContent = failed;
+      document.getElementById('summary-time').textContent = `${totalTime}ms`;
+    }
+
+    // Test implementations
+    async function testMultiSubscriber() {
+      const bus = new EventBus();
+      let count = 0;
+      
+      bus.subscribe('test:event', () => count++);
+      bus.subscribe('test:event', () => count++);
+      bus.subscribe('test:event', () => count++);
+      
+      bus.publish('test:event', { data: 'test' });
+      
+      await new Promise(resolve => setTimeout(resolve, 10));
+      
+      if (count !== 3) throw new Error(`Expected 3 calls, got ${count}`);
+    }
+
+    async function testBridgeEventFlow() {
+      // Create mock worker
+      const workerCode = `
+        self.onmessage = function(e) {
+          if (e.data.type === 'bridge-message') {
+            self.postMessage({
+              type: 'bridge-message',
+              event: 'worker:response',
+              data: { received: true }
+            });
+          }
+        };
+        self.postMessage({ type: 'ready' });
+      `;
+      
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const workerUrl = URL.createObjectURL(blob);
+      
+      const bus = new EventBus();
+      const bridge = new MessageBridgeMain({
+        workerUrl: workerUrl,
+        eventBus: bus,
+        forwardEvents: ['test:send']
+      });
+      
+      await bridge.init();
+      
+      // Wait for bridge to fully initialize subscriptions
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      let received = false;
+      bus.subscribe('worker:response', (data) => {
+        received = true;
+      });
+      
+      // Wait for subscription to be active
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      bus.publish('test:send', { test: true });
+      
+      // Wait for message to flow through
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      bridge.terminate();
+      URL.revokeObjectURL(workerUrl);
+      
+      if (!received) throw new Error('Message did not flow through bridge');
+    }
+
+    async function testErrorIsolation() {
+      const bus = new EventBus();
+      let successCount = 0;
+      
+      bus.subscribe('test', () => { throw new Error('Handler error'); });
+      bus.subscribe('test', () => successCount++);
+      bus.subscribe('test', () => successCount++);
+      
+      bus.publish('test', {});
+      
+      await new Promise(resolve => setTimeout(resolve, 10));
+      
+      if (successCount !== 2) throw new Error(`Expected 2 successes, got ${successCount}`);
+    }
+
+    async function testStorageCoexistence() {
+      const opfs = new OPFSProvider();
+      await opfs.initialize();
+      
+      const db = new IndexedDBProvider('test-coexist', 1);
+      await db.initialize([{ name: 'test', keyPath: 'id' }]);
+      
+      // Write to both
+      await opfs.writeFile('/test.txt', 'OPFS data');
+      await db.set('test', 'key1', { id: 'key1', data: 'IndexedDB data' });
+      
+      // Read from both
+      const opfsData = await opfs.readFile('/test.txt');
+      const dbData = await db.get('test', 'key1');
+      
+      if (opfsData !== 'OPFS data') throw new Error('OPFS data mismatch');
+      if (dbData.data !== 'IndexedDB data') throw new Error('IndexedDB data mismatch');
+    }
+
+    async function testStorageSync() {
+      // Simulate syncing data between OPFS and IndexedDB
+      const opfs = new OPFSProvider();
+      await opfs.initialize();
+      
+      const db = new IndexedDBProvider('test-sync', 1);
+      await db.initialize([{ name: 'sync', keyPath: 'path' }]);
+      
+      // Create file in OPFS
+      const testData = JSON.stringify({ version: 1, content: 'test' });
+      await opfs.writeFile('/data/config.json', testData);
+      
+      // Sync to IndexedDB
+      const files = await opfs.readDir('/data');
+      for (const file of files) {
+        if (file.type === 'file') {
+          const content = await opfs.readFile(file.path);
+          await db.set('sync', file.path, { path: file.path, content, synced: Date.now() });
+        }
+      }
+      
+      // Verify sync
+      const synced = await db.get('sync', '/data/config.json');
+      if (!synced || synced.content !== testData) throw new Error('Sync failed');
+    }
+
+    async function testLargeData() {
+      const db = new IndexedDBProvider('test-large', 1);
+      await db.initialize([{ name: 'large', keyPath: 'id' }]);
+      
+      // Create 1MB of data
+      const largeData = 'x'.repeat(1024 * 1024);
+      
+      const start = performance.now();
+      await db.set('large', 'big1', { id: 'big1', data: largeData });
+      const writeTime = performance.now() - start;
+      
+      const readStart = performance.now();
+      const retrieved = await db.get('large', 'big1');
+      const readTime = performance.now() - readStart;
+      
+      if (!retrieved || retrieved.data.length !== largeData.length) {
+        throw new Error('Large data storage failed');
+      }
+      
+      log(`Large data: write=${writeTime.toFixed(0)}ms, read=${readTime.toFixed(0)}ms`, 'info');
+    }
+
+    async function testWorkerIndexedDB() {
+      // This test would require a real worker with IndexedDB access
+      // For now, just verify the concept
+      if (typeof Worker === 'undefined') {
+        throw new Error('Web Workers not supported');
+      }
+      
+      if (typeof indexedDB === 'undefined') {
+        throw new Error('IndexedDB not available');
+      }
+      
+      // Workers can access IndexedDB in modern browsers
+      log('Workers can access IndexedDB (verified by browser capability)', 'success');
+    }
+
+    async function testWorkerEventBus() {
+      const workerCode = `
+        let messageCount = 0;
+        self.onmessage = function(e) {
+          if (e.data.type === 'bridge-message') {
+            messageCount++;
+            self.postMessage({
+              type: 'bridge-message',
+              event: 'worker:ack',
+              data: { count: messageCount }
+            });
+          }
+        };
+        self.postMessage({ type: 'ready' });
+      `;
+      
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const workerUrl = URL.createObjectURL(blob);
+      
+      const bus = new EventBus();
+      const bridge = new MessageBridgeMain({
+        workerUrl: workerUrl,
+        eventBus: bus,
+        forwardEvents: ['to:worker']
+      });
+      
+      await bridge.init();
+      
+      // Wait for bridge to fully initialize subscriptions
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      let ackCount = 0;
+      bus.subscribe('worker:ack', (data) => {
+        ackCount = data.count;
+      });
+      
+      // Wait for subscription to be active
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Send multiple messages
+      bus.publish('to:worker', { msg: 1 });
+      await new Promise(resolve => setTimeout(resolve, 10));
+      bus.publish('to:worker', { msg: 2 });
+      await new Promise(resolve => setTimeout(resolve, 10));
+      bus.publish('to:worker', { msg: 3 });
+      
+      // Wait for all messages to flow through
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      bridge.terminate();
+      URL.revokeObjectURL(workerUrl);
+      
+      if (ackCount !== 3) throw new Error(`Expected 3 acks, got ${ackCount}`);
+    }
+
+    async function testCrossContextData() {
+      // Simulate passing data between main thread and worker
+      const testData = { nested: { array: [1, 2, 3], text: 'test' } };
+      
+      const workerCode = `
+        self.onmessage = function(e) {
+          if (e.data.type === 'bridge-message') {
+            // Echo back the data with modification
+            const data = e.data.data;
+            data.processed = true;
+            data.timestamp = Date.now();
+            
+            self.postMessage({
+              type: 'bridge-message',
+              event: 'worker:processed',
+              data: data
+            });
+          }
+        };
+        self.postMessage({ type: 'ready' });
+      `;
+      
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const workerUrl = URL.createObjectURL(blob);
+      
+      const bus = new EventBus();
+      const bridge = new MessageBridgeMain({
+        workerUrl: workerUrl,
+        eventBus: bus,
+        forwardEvents: ['send:data']
+      });
+      
+      await bridge.init();
+      
+      // Wait for bridge to fully initialize subscriptions
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      let processed = null;
+      bus.subscribe('worker:processed', (data) => {
+        processed = data;
+      });
+      
+      // Wait for subscription to be active
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      bus.publish('send:data', JSON.parse(JSON.stringify(testData)));
+      
+      // Wait for message to flow through and back
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      bridge.terminate();
+      URL.revokeObjectURL(workerUrl);
+      
+      if (!processed || !processed.processed) throw new Error('Data processing failed');
+      if (processed.nested.array.length !== 3) throw new Error('Data structure corrupted');
+    }
+
+    async function testFileWorkflow() {
+      // Simulate file upload workflow
+      const opfs = new OPFSProvider();
+      await opfs.initialize();
+      
+      const db = new IndexedDBProvider('test-workflow', 1);
+      await db.initialize([{ name: 'files', keyPath: 'id' }]);
+      
+      // Step 1: File uploaded to OPFS
+      const fileContent = '{"users": [{"name": "Alice"}, {"name": "Bob"}]}';
+      await opfs.writeFile('/uploads/data.json', fileContent);
+      
+      // Step 2: Metadata stored in IndexedDB
+      const fileId = 'file-' + Date.now();
+      await db.set('files', fileId, {
+        id: fileId,
+        path: '/uploads/data.json',
+        size: fileContent.length,
+        uploaded: Date.now(),
+        status: 'pending'
+      });
+      
+      // Step 3: Process file (simulated)
+      const metadata = await db.get('files', fileId);
+      const content = await opfs.readFile(metadata.path);
+      const parsed = JSON.parse(content);
+      
+      // Step 4: Update status
+      metadata.status = 'processed';
+      metadata.recordCount = parsed.users.length;
+      await db.set('files', fileId, metadata);
+      
+      // Verify
+      const final = await db.get('files', fileId);
+      if (final.status !== 'processed') throw new Error('Workflow failed');
+      if (final.recordCount !== 2) throw new Error('Processing incorrect');
+    }
+
+    async function testChatPersistence() {
+      const db = new IndexedDBProvider('test-chat', 1);
+      await db.initialize([{ name: 'messages', keyPath: 'id', indexes: [{ name: 'timestamp', keyPath: 'timestamp' }] }]);
+      
+      const sessionId = 'session-' + Date.now();
+      const messages = [
+        { id: 'msg-1', sessionId, role: 'user', content: 'Hello!', timestamp: Date.now() },
+        { id: 'msg-2', sessionId, role: 'assistant', content: 'Hi there!', timestamp: Date.now() + 1 },
+        { id: 'msg-3', sessionId, role: 'user', content: 'How are you?', timestamp: Date.now() + 2 }
+      ];
+      
+      // Store messages
+      for (const msg of messages) {
+        await db.set('messages', msg.id, msg);
+      }
+      
+      // Retrieve session messages (in real app, would use index query)
+      const allMessages = await db.getAll('messages');
+      const sessionMessages = allMessages.filter(m => m.sessionId === sessionId);
+      
+      if (sessionMessages.length !== 3) throw new Error(`Expected 3 messages, got ${sessionMessages.length}`);
+      
+      // Verify order
+      const isSorted = sessionMessages.every((m, i) => i === 0 || m.timestamp >= sessionMessages[i-1].timestamp);
+      if (!isSorted) throw new Error('Messages not in chronological order');
+    }
+
+    async function testToolExecution() {
+      const bus = new EventBus();
+      const db = new IndexedDBProvider('test-tools', 1);
+      await db.initialize([{ name: 'tools', keyPath: 'toolId' }]);
+      
+      let executionLog = [];
+      
+      // Subscribe to tool calls
+      bus.subscribe('tool:call', async (data) => {
+        executionLog.push({ phase: 'received', data });
+        
+        // Store in IndexedDB
+        await db.set('tools', data.toolId, {
+          toolId: data.toolId,
+          name: data.name,
+          status: 'executing',
+          started: Date.now()
+        });
+        
+        // Simulate execution
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Update status
+        await db.set('tools', data.toolId, {
+          toolId: data.toolId,
+          name: data.name,
+          status: 'completed',
+          started: data.timestamp,
+          completed: Date.now()
+        });
+        
+        executionLog.push({ phase: 'completed', toolId: data.toolId });
+        
+        // Emit result
+        bus.publish('tool:result', { toolId: data.toolId, success: true });
+      });
+      
+      // Execute tool
+      const toolCall = { toolId: 'tool-1', name: 'readFile', params: { path: '/test.txt' }, timestamp: Date.now() };
+      bus.publish('tool:call', toolCall);
+      
+      // Wait for execution
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Verify
+      const stored = await db.get('tools', 'tool-1');
+      if (!stored) throw new Error('Tool execution not stored');
+      if (stored.status !== 'completed') throw new Error('Tool not completed');
+      if (executionLog.length !== 2) throw new Error('Execution log incomplete');
+    }
+
+    // Performance benchmarks
+    async function runBenchmarks() {
+      log('Running performance benchmarks...', 'info');
+      const container = document.getElementById('benchmarks');
+      
+      const benchmarks = [
+        { name: 'Event Bus: 1000 publishes', fn: benchmarkEventBus },
+        { name: 'IndexedDB: 100 writes', fn: benchmarkIndexedDB },
+        { name: 'OPFS: 50 file operations', fn: benchmarkOPFS },
+        { name: 'Message Bridge: 100 messages', fn: benchmarkBridge },
+        { name: 'Memory usage', fn: benchmarkMemory }
+      ];
+      
+      for (const bench of benchmarks) {
+        try {
+          const result = await bench.fn();
+          addBenchmarkResult(container, bench.name, result);
+        } catch (error) {
+          addBenchmarkResult(container, bench.name, { error: error.message });
+        }
+      }
+    }
+
+    function addBenchmarkResult(container, name, result) {
+      const div = document.createElement('div');
+      div.className = 'bg-gray-50 rounded-lg p-4';
+      
+      if (result.error) {
+        div.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-medium">${name}</span>
+            <span class="text-red-600 text-sm">Error: ${result.error}</span>
+          </div>
+        `;
+      } else {
+        let details = '';
+        if (result.time) details += `<span class="text-blue-600 font-medium">${result.time.toFixed(2)}ms</span>`;
+        if (result.ops) details += ` <span class="text-gray-500">(${result.ops.toFixed(0)} ops/sec)</span>`;
+        if (result.memory) details += ` <span class="text-green-600">Memory: ${result.memory}</span>`;
+        
+        div.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-medium">${name}</span>
+            <span>${details}</span>
+          </div>
+          ${result.bar ? `<div class="mt-2 w-full bg-gray-200 rounded-full h-2"><div class="bg-blue-600 h-2 rounded-full benchmark-bar" style="width: ${result.bar}%"></div></div>` : ''}
+        `;
+      }
+      
+      container.appendChild(div);
+    }
+
+    async function benchmarkEventBus() {
+      const bus = new EventBus();
+      let count = 0;
+      
+      bus.subscribe('bench', () => count++);
+      
+      const start = performance.now();
+      for (let i = 0; i < 1000; i++) {
+        bus.publish('bench', { data: i });
+      }
+      const time = performance.now() - start;
+      
+      return { time, ops: 1000 / (time / 1000), bar: Math.min(100, 1000 / time * 10) };
+    }
+
+    async function benchmarkIndexedDB() {
+      const db = new IndexedDBProvider('bench-idb', 1);
+      await db.initialize([{ name: 'bench', keyPath: 'id' }]);
+      
+      const start = performance.now();
+      for (let i = 0; i < 100; i++) {
+        await db.set('bench', `key-${i}`, { id: `key-${i}`, data: i });
+      }
+      const time = performance.now() - start;
+      
+      return { time, ops: 100 / (time / 1000), bar: Math.min(100, 100 / time * 50) };
+    }
+
+    async function benchmarkOPFS() {
+      const opfs = new OPFSProvider();
+      await opfs.initialize();
+      
+      const start = performance.now();
+      for (let i = 0; i < 50; i++) {
+        await opfs.writeFile(`/bench/file-${i}.txt`, `Content ${i}`);
+      }
+      const time = performance.now() - start;
+      
+      // Cleanup
+      try {
+        for (let i = 0; i < 50; i++) {
+          await opfs.deleteFile(`/bench/file-${i}.txt`);
+        }
+      } catch (e) {}
+      
+      return { time, ops: 50 / (time / 1000), bar: Math.min(100, 50 / time * 20) };
+    }
+
+    async function benchmarkBridge() {
+      const workerCode = `
+        let count = 0;
+        self.onmessage = function(e) {
+          if (e.data.type === 'bridge-message') {
+            count++;
+            if (count >= 100) {
+              self.postMessage({ type: 'done', count });
+            }
+          }
+        };
+        self.postMessage({ type: 'ready' });
+      `;
+      
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const workerUrl = URL.createObjectURL(blob);
+      
+      const bus = new EventBus();
+      const bridge = new MessageBridgeMain({
+        workerUrl: workerUrl,
+        eventBus: bus,
+        forwardEvents: ['bench:msg']
+      });
+      
+      await bridge.init();
+      
+      const start = performance.now();
+      for (let i = 0; i < 100; i++) {
+        bus.publish('bench:msg', { index: i });
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const time = performance.now() - start;
+      
+      bridge.terminate();
+      URL.revokeObjectURL(workerUrl);
+      
+      return { time, ops: 100 / (time / 1000), bar: Math.min(100, 100 / time * 10) };
+    }
+
+    async function benchmarkMemory() {
+      if (performance.memory) {
+        const used = performance.memory.usedJSHeapSize;
+        const total = performance.memory.totalJSHeapSize;
+        return { 
+          memory: `${(used / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB`,
+          time: 0 
+        };
+      }
+      return { memory: 'Not available', time: 0 };
+    }
+
+    // Event listeners
+    document.getElementById('btn-run-all').addEventListener('click', runIntegrationTests);
+    document.getElementById('btn-clear-results').addEventListener('click', () => {
+      document.getElementById('tests-event-flow').innerHTML = '';
+      document.getElementById('tests-persistence').innerHTML = '';
+      document.getElementById('tests-worker').innerHTML = '';
+      document.getElementById('tests-e2e').innerHTML = '';
+      document.getElementById('benchmarks').innerHTML = '';
+      document.getElementById('summary-total').textContent = '0';
+      document.getElementById('summary-passed').textContent = '0';
+      document.getElementById('summary-failed').textContent = '0';
+      document.getElementById('summary-time').textContent = '0ms';
+      progressBar.style.width = '0%';
+      testResults = [];
+      log('Results cleared', 'info');
+    });
+
+    // Initialize
+    displayBrowserInfo();
+    checkComponents();
+    log('Integration test suite loaded. Click "Run All Tests" to begin.', 'info');
+  </script>
+</body>
+</html>

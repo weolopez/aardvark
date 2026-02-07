@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EventBus Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .test-pass { @apply bg-green-100 text-green-800 border-green-300; }
+    .test-fail { @apply bg-red-100 text-red-800 border-red-300; }
+    .test-running { @apply bg-blue-100 text-blue-800 border-blue-300; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">EventBus Unit Tests</h1>
+      <p class="text-gray-600 mt-2">Comprehensive test suite for the Event Bus component</p>
+    </header>
+
+    <!-- Test Summary -->
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <span class="text-gray-600">Total Tests:</span>
+          <span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-green-600">Passed:</span>
+          <span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-red-600">Failed:</span>
+          <span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span>
+        </div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200 text-gray-700">
+          Running...
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Results -->
+    <div id="test-results" class="space-y-3">
+      <!-- Tests will be inserted here -->
+    </div>
+
+    <!-- Console Output -->
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold text-gray-300 mb-4">Console Output</h2>
+      <div id="console-output" class="font-mono text-sm text-green-400 space-y-1 max-h-64 overflow-y-auto">
+        <div class="text-gray-500">Test execution started...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { EventBus, SystemEvents, globalEventBus } from '../../src/index.js';
+
+    // Test Framework
+    class TestRunner {
+      constructor() {
+        this.tests = [];
+        this.results = [];
+        this.passCount = 0;
+        this.failCount = 0;
+      }
+
+      test(name, fn) {
+        this.tests.push({ name, fn });
+      }
+
+      async runAll() {
+        for (const test of this.tests) {
+          await this.runTest(test);
+        }
+        this.showSummary();
+      }
+
+      async runTest(test) {
+        const resultEl = this.createResultElement(test.name);
+        
+        try {
+          await test.fn();
+          this.passCount++;
+          this.markPassed(resultEl);
+          this.log(`✓ ${test.name}`, 'success');
+        } catch (error) {
+          this.failCount++;
+          this.markFailed(resultEl, error);
+          this.log(`✗ ${test.name}: ${error.message}`, 'error');
+        }
+      }
+
+      createResultElement(name) {
+        const container = document.getElementById('test-results');
+        const el = document.createElement('div');
+        el.className = 'test-running border-l-4 p-4 rounded bg-white shadow-sm';
+        el.innerHTML = `
+          <div class="flex items-center">
+            <span class="test-status mr-3">⏳</span>
+            <span class="font-medium">${name}</span>
+          </div>
+          <div class="test-error mt-2 text-sm text-red-600 hidden"></div>
+        `;
+        container.appendChild(el);
+        return el;
+      }
+
+      markPassed(el) {
+        el.className = 'test-pass border-l-4 p-4 rounded bg-white shadow-sm';
+        el.querySelector('.test-status').textContent = '✓';
+      }
+
+      markFailed(el, error) {
+        el.className = 'test-fail border-l-4 p-4 rounded bg-white shadow-sm';
+        el.querySelector('.test-status').textContent = '✗';
+        const errorEl = el.querySelector('.test-error');
+        errorEl.textContent = error.message;
+        errorEl.classList.remove('hidden');
+      }
+
+      log(message, type = 'info') {
+        const consoleEl = document.getElementById('console-output');
+        const line = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        if (type === 'error') {
+          line.className = 'text-red-400';
+        } else if (type === 'success') {
+          line.className = 'text-green-400';
+        } else {
+          line.className = 'text-gray-400';
+        }
+        
+        line.textContent = `[${timestamp}] ${message}`;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      showSummary() {
+        document.getElementById('total-count').textContent = this.tests.length;
+        document.getElementById('pass-count').textContent = this.passCount;
+        document.getElementById('fail-count').textContent = this.failCount;
+        
+        const badge = document.getElementById('status-badge');
+        if (this.failCount === 0) {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+          badge.textContent = 'All Tests Passed!';
+        } else {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+          badge.textContent = `${this.failCount} Tests Failed`;
+        }
+        
+        this.log(`\nTest run complete: ${this.passCount}/${this.tests.length} passed`, 
+          this.failCount === 0 ? 'success' : 'error');
+        
+        // Report to parent window
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
+      }
+    }
+
+    // Assertions
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(`${message || 'Assertion failed'}: expected ${expected}, got ${actual}`);
+      }
+    }
+
+    function assertTrue(value, message) {
+      if (!value) {
+        throw new Error(message || 'Expected true but got false');
+      }
+    }
+
+    function assertFalse(value, message) {
+      if (value) {
+        throw new Error(message || 'Expected false but got true');
+      }
+    }
+
+    // Define Tests
+    const runner = new TestRunner();
+
+    // Test 1: Basic subscribe and publish
+    runner.test('Subscribe and receive events', () => {
+      const bus = new EventBus();
+      let received = null;
+      bus.subscribe('test', (data) => { received = data; });
+      bus.publish('test', { value: 42 });
+      assertEqual(received.value, 42, 'Event data should be received');
+    });
+
+    // Test 2: Unsubscribe stops receiving
+    runner.test('Unsubscribe stops receiving events', () => {
+      const bus = new EventBus();
+      let count = 0;
+      const id = bus.subscribe('test', () => count++);
+      bus.publish('test');
+      bus.unsubscribe(id);
+      bus.publish('test');
+      assertEqual(count, 1, 'Should only receive one event');
+    });
+
+    // Test 3: Multiple subscribers
+    runner.test('Multiple subscribers receive same event', () => {
+      const bus = new EventBus();
+      let count1 = 0;
+      let count2 = 0;
+      bus.subscribe('test', () => count1++);
+      bus.subscribe('test', () => count2++);
+      bus.publish('test');
+      assertEqual(count1, 1, 'First subscriber should receive');
+      assertEqual(count2, 1, 'Second subscriber should receive');
+    });
+
+    // Test 4: Publish without subscribers
+    runner.test('Publish without subscribers does not error', () => {
+      const bus = new EventBus();
+      bus.publish('nonexistent', {});
+      assertTrue(true, 'Should not throw');
+    });
+
+    // Test 5: Handler errors don't break others
+    runner.test('Handler errors do not break other handlers', () => {
+      const bus = new EventBus();
+      let received = false;
+      bus.subscribe('test', () => { throw new Error('Handler error'); });
+      bus.subscribe('test', () => { received = true; });
+      bus.publish('test');
+      assertTrue(received, 'Second handler should still receive');
+    });
+
+    // Test 6: Clear removes all subscriptions
+    runner.test('Clear removes all subscriptions', () => {
+      const bus = new EventBus();
+      let count = 0;
+      bus.subscribe('test1', () => count++);
+      bus.subscribe('test2', () => count++);
+      bus.clear();
+      bus.publish('test1');
+      bus.publish('test2');
+      assertEqual(count, 0, 'Should not receive after clear');
+    });
+
+    // Test 7: Once only triggers once
+    runner.test('Once only triggers once', () => {
+      const bus = new EventBus();
+      let count = 0;
+      bus.once('test', () => count++);
+      bus.publish('test');
+      bus.publish('test');
+      bus.publish('test');
+      assertEqual(count, 1, 'Should only trigger once');
+    });
+
+    // Test 8: Subscriber count
+    runner.test('Subscriber count is accurate', () => {
+      const bus = new EventBus();
+      assertEqual(bus.subscriberCount('test'), 0, 'Should be 0 initially');
+      const id1 = bus.subscribe('test', () => {});
+      const id2 = bus.subscribe('test', () => {});
+      assertEqual(bus.subscriberCount('test'), 2, 'Should be 2 after subscriptions');
+      bus.unsubscribe(id1);
+      assertEqual(bus.subscriberCount('test'), 1, 'Should be 1 after unsubscribe');
+      bus.unsubscribe(id2);
+      assertEqual(bus.subscriberCount('test'), 0, 'Should be 0 after all unsubscribe');
+    });
+
+    // Test 9: SystemEvents constants
+    runner.test('SystemEvents constants are defined', () => {
+      assertEqual(SystemEvents.SYSTEM_READY, 'system:ready');
+      assertEqual(SystemEvents.TOOL_CALL, 'tool:call');
+      assertEqual(SystemEvents.TOOL_RESULT, 'tool:result');
+      assertEqual(SystemEvents.SESSION_UPDATE, 'session:update');
+      assertEqual(SystemEvents.STORAGE_CHANGE, 'storage:change');
+      assertEqual(SystemEvents.UI_COMMAND, 'ui:command');
+    });
+
+    // Test 10: Global event bus instance
+    runner.test('Global event bus is a singleton', () => {
+      assertTrue(globalEventBus instanceof EventBus, 'Should be EventBus instance');
+      let received = false;
+      const id = globalEventBus.subscribe('global-test', () => { received = true; });
+      globalEventBus.publish('global-test');
+      assertTrue(received, 'Global bus should work');
+      globalEventBus.unsubscribe(id);
+    });
+
+    // Test 11: Different event names don't interfere
+    runner.test('Different event names are isolated', () => {
+      const bus = new EventBus();
+      let count1 = 0;
+      let count2 = 0;
+      bus.subscribe('event1', () => count1++);
+      bus.subscribe('event2', () => count2++);
+      bus.publish('event1');
+      assertEqual(count1, 1, 'Event1 subscriber should receive');
+      assertEqual(count2, 0, 'Event2 subscriber should not receive');
+    });
+
+    // Test 12: Multiple unsubscribes are safe
+    runner.test('Multiple unsubscribes are safe', () => {
+      const bus = new EventBus();
+      const id = bus.subscribe('test', () => {});
+      bus.unsubscribe(id);
+      bus.unsubscribe(id); // Should not throw
+      bus.unsubscribe(999); // Non-existent should not throw
+      assertTrue(true, 'Should not throw on multiple unsubscribes');
+    });
+
+    // Test 13: Data is passed correctly
+    runner.test('Complex data is passed correctly', () => {
+      const bus = new EventBus();
+      let received = null;
+      const complexData = {
+        string: 'test',
+        number: 42,
+        boolean: true,
+        array: [1, 2, 3],
+        nested: { a: 1, b: 2 }
+      };
+      bus.subscribe('test', (data) => { received = data; });
+      bus.publish('test', complexData);
+      assertEqual(received.string, 'test');
+      assertEqual(received.number, 42);
+      assertEqual(received.boolean, true);
+      assertEqual(received.array.length, 3);
+      assertEqual(received.nested.a, 1);
+    });
+
+    // Test 14: Event handler context
+    runner.test('Event handler can access this', () => {
+      const bus = new EventBus();
+      const obj = {
+        value: 42,
+        handler: function(data) {
+          this.received = data + this.value;
+        },
+        received: null
+      };
+      bus.subscribe('test', obj.handler.bind(obj));
+      bus.publish('test', 10);
+      assertEqual(obj.received, 52);
+    });
+
+    // Run all tests
+    runner.runAll();
+  </script>
+</body>
+</html>

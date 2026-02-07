@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - All Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800">Aardvark Test Suite</h1>
+      <p class="text-gray-600 mt-2">Running all component tests...</p>
+    </header>
+
+    <!-- Overall Progress -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold">Overall Progress</h2>
+        <span id="overall-status" class="text-gray-600">Running...</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-4">
+        <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Test Results -->
+    <div id="test-suites" class="space-y-4">
+      <!-- Test suites will be loaded here -->
+    </div>
+
+    <!-- Summary -->
+    <div id="final-summary" class="mt-8 bg-white rounded-lg shadow-md p-6 hidden">
+      <h2 class="text-2xl font-semibold mb-4">Final Results</h2>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div class="bg-gray-100 rounded-lg p-4">
+          <div id="total-tests" class="text-3xl font-bold text-gray-800">0</div>
+          <div class="text-gray-600">Total Tests</div>
+        </div>
+        <div class="bg-green-100 rounded-lg p-4">
+          <div id="total-passed" class="text-3xl font-bold text-green-600">0</div>
+          <div class="text-green-700">Passed</div>
+        </div>
+        <div class="bg-red-100 rounded-lg p-4">
+          <div id="total-failed" class="text-3xl font-bold text-red-600">0</div>
+          <div class="text-red-700">Failed</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const testSuites = [
+      {
+        name: 'Event Bus - Unit Tests',
+        url: '../../components/core/event-bus/tests/unit/event-bus.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'Event Bus - Integration Tests',
+        url: '../../components/core/event-bus/tests/integration/cross-component.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'OPFS Provider - Unit Tests',
+        url: '../../components/core/opfs-provider/tests/unit/opfs-provider.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'IndexedDB Provider - Unit Tests',
+        url: '../../components/core/indexeddb-provider/tests/unit/indexeddb-provider.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'Message Bridge - Unit Tests',
+        url: '../../components/core/message-bridge/tests/unit/message-bridge.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'API Client - Unit Tests',
+        url: '../../components/core/api-client/tests/unit/api-client.spec.html',
+        status: 'pending'
+      },
+      {
+        name: 'Phase 1 - Full Integration Tests',
+        url: '../../tests/integration/integration-tests.html',
+        status: 'pending'
+      }
+    ];
+
+    let completedSuites = 0;
+    let totalTests = 0;
+    let totalPassed = 0;
+    let totalFailed = 0;
+
+    function createSuiteElement(suite) {
+      const el = document.createElement('div');
+      el.className = 'bg-white rounded-lg shadow-md p-6';
+      el.id = `suite-${suite.name.replace(/\s+/g, '-').toLowerCase()}`;
+      el.innerHTML = `
+        <div class="flex justify-between items-center">
+          <h3 class="text-lg font-semibold">${suite.name}</h3>
+          <span class="status-badge px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+            Pending
+          </span>
+        </div>
+        <div class="mt-4">
+          <iframe src="${suite.url}" class="w-full h-96 border border-gray-200 rounded" sandbox="allow-scripts allow-same-origin"></iframe>
+        </div>
+      `;
+      return el;
+    }
+
+    function loadTestSuites() {
+      const container = document.getElementById('test-suites');
+      
+      testSuites.forEach((suite, index) => {
+        const el = createSuiteElement(suite);
+        container.appendChild(el);
+        
+        // Listen for messages from iframe
+        window.addEventListener('message', (e) => {
+          if (e.data && e.data.type === 'test-complete') {
+            updateSuiteStatus(suite, e.data);
+          }
+        });
+      });
+    }
+
+    function updateSuiteStatus(suite, data) {
+      completedSuites++;
+      totalTests += data.total || 0;
+      totalPassed += data.passed || 0;
+      totalFailed += data.failed || 0;
+      
+      const el = document.getElementById(`suite-${suite.name.replace(/\s+/g, '-').toLowerCase()}`);
+      const badge = el.querySelector('.status-badge');
+      
+      if (data.failed === 0) {
+        badge.className = 'status-badge px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800';
+        badge.textContent = `✓ Passed (${data.passed}/${data.total})`;
+      } else {
+        badge.className = 'status-badge px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800';
+        badge.textContent = `✗ Failed (${data.failed}/${data.total})`;
+      }
+      
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const progress = (completedSuites / testSuites.length) * 100;
+      document.getElementById('progress-bar').style.width = `${progress}%`;
+      document.getElementById('overall-status').textContent = 
+        `${completedSuites}/${testSuites.length} suites complete`;
+      
+      if (completedSuites === testSuites.length) {
+        showFinalSummary();
+      }
+    }
+
+    function showFinalSummary() {
+      document.getElementById('final-summary').classList.remove('hidden');
+      document.getElementById('total-tests').textContent = totalTests;
+      document.getElementById('total-passed').textContent = totalPassed;
+      document.getElementById('total-failed').textContent = totalFailed;
+      
+      const status = document.getElementById('overall-status');
+      if (totalFailed === 0) {
+        status.textContent = '✓ All Tests Passed!';
+        status.className = 'text-green-600 font-semibold';
+      } else {
+        status.textContent = `✗ ${totalFailed} tests failed`;
+        status.className = 'text-red-600 font-semibold';
+      }
+    }
+
+    // Load tests when page loads
+    loadTestSuites();
+  </script>
+</body>
+</html>

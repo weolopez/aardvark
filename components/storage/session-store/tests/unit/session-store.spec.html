@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Store Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">Session Store Unit Tests</h1>
+    </header>
+
+    <div id="test-results" class="space-y-3"></div>
+  </div>
+
+  <script type="module">
+    import { SessionStore } from '../../src/index.js';
+    import { IndexedDBProvider } from '../../../core/indexeddb-provider/src/index.js';
+
+    // Simple Test Runner
+    async function runTest(name, fn) {
+      const container = document.getElementById('test-results');
+      const el = document.createElement('div');
+      el.className = 'p-4 rounded bg-white shadow mb-2 border-l-4 border-yellow-400';
+      el.textContent = `⏳ ${name}`;
+      container.appendChild(el);
+
+      try {
+        await fn();
+        el.className = 'p-4 rounded bg-white shadow mb-2 border-l-4 border-green-500';
+        el.textContent = `✓ ${name}`;
+        console.log(`PASS: ${name}`);
+      } catch (e) {
+        el.className = 'p-4 rounded bg-white shadow mb-2 border-l-4 border-red-500';
+        el.innerHTML = `✗ ${name}<br><small class="text-red-600">${e.message}</small>`;
+        console.error(`FAIL: ${name}`, e);
+      }
+    }
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message || "Assertion failed");
+    }
+
+    // Initialize Store with Test DB
+    const dbName = 'test-sessions-' + Date.now();
+    const db = new IndexedDBProvider(); 
+    const store = new SessionStore({ db });
+
+    (async () => {
+      await store.initialize(dbName);
+
+      await runTest('Create Session', async () => {
+        const id = await store.createSession({ name: 'Test Session' });
+        assert(id, 'Session ID returned');
+        
+        const session = await store.getSession(id);
+        assert(session.name === 'Test Session', 'Session name matches');
+      });
+
+      await runTest('Add Nodes & History', async () => {
+        const sessionId = await store.createSession({ name: 'History Test' });
+        
+        const node1 = await store.addNode(sessionId, null, { role: 'user', content: 'Hi' });
+        const node2 = await store.addNode(sessionId, node1, { role: 'assistant', content: 'Hello' });
+        
+        const history = await store.getHistory(sessionId, node2);
+        assert(history.length === 2, 'History length 2');
+        assert(history[0].content === 'Hi', 'First message correct');
+        assert(history[1].content === 'Hello', 'Second message correct');
+      });
+
+      await runTest('Tree Branching', async () => {
+        const sessionId = await store.createSession({ name: 'Branch Test' });
+        const root = await store.addNode(sessionId, null, { content: 'Root' });
+        
+        // Branch A
+        const a1 = await store.addNode(sessionId, root, { content: 'A1' });
+        
+        // Branch B (from root)
+        const b1 = await store.addNode(sessionId, root, { content: 'B1' });
+        
+        const historyA = await store.getHistory(sessionId, a1);
+        const historyB = await store.getHistory(sessionId, b1);
+        
+        assert(historyA[1].id === a1, 'History A correct');
+        assert(historyB[1].id === b1, 'History B correct');
+        assert(historyA[0].id === root, 'Root shared');
+      });
+
+      await runTest('Search', async () => {
+         const sessionId = await store.createSession({ name: 'Search Me' });
+         await store.addNode(sessionId, null, { content: 'The magic keyword is banana' });
+         
+         const results = await store.searchNodes(sessionId, 'banana');
+         assert(results.length === 1, 'Found banana');
+      });
+
+    })();
+  </script>
+</body>
+</html>

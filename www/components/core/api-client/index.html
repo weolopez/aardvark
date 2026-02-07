@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - API Client Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .message-user { background-color: #dbeafe; border-left: 4px solid #3b82f6; }
+    .message-assistant { background-color: #f3f4f6; border-left: 4px solid #6b7280; }
+    .message-system { background-color: #fef3c7; border-left: 4px solid #f59e0b; }
+    .streaming-cursor::after {
+      content: '|';
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    .token-pill {
+      transition: all 0.3s ease;
+    }
+    .token-pill:hover {
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-6xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">API Client</h1>
+      <p class="text-gray-600">LLM API communication with streaming, retry logic, and multi-provider support</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Configuration Panel -->
+      <div class="lg:col-span-1 space-y-6">
+        <!-- Provider Settings -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Provider Settings</h2>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+              <select id="provider-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="gemini">Google Gemini</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+              <input type="password" id="api-key" 
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your API key">
+              <p class="text-xs text-gray-500 mt-1">Never commit API keys to version control</p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+              <select id="model-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="gemini-3-flash-preview" selected>Gemini 3 Flash Preview</option>
+                <option value="gemini-pro">Gemini Pro</option>
+                <option value="gemini-pro-vision">Gemini Pro Vision</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Base URL (Optional)</label>
+              <input type="text" id="base-url" 
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="https://api.example.com">
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Settings -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Advanced Settings</h2>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                Temperature: <span id="temp-value">0.7</span>
+              </label>
+              <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.7"
+                class="w-full">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Max Tokens</label>
+              <input type="number" id="max-tokens" value="1024" min="1" max="8192"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Retries</label>
+                <input type="number" id="retries" value="3" min="0" max="5"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Timeout (ms)</label>
+                <input type="number" id="timeout" value="30000" min="5000" step="5000"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="stream-toggle" checked class="w-4 h-4 text-blue-600">
+              <label for="stream-toggle" class="text-sm text-gray-700">Enable streaming</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Session Stats</h2>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="text-center">
+              <div id="stat-requests" class="text-2xl font-bold text-blue-600">0</div>
+              <div class="text-xs text-gray-600">Requests</div>
+            </div>
+            <div class="text-center">
+              <div id="stat-tokens" class="text-2xl font-bold text-green-600">0</div>
+              <div class="text-xs text-gray-600">Tokens</div>
+            </div>
+            <div class="text-center">
+              <div id="stat-time" class="text-2xl font-bold text-purple-600">0ms</div>
+              <div class="text-xs text-gray-600">Avg Time</div>
+            </div>
+            <div class="text-center">
+              <div id="stat-errors" class="text-2xl font-bold text-red-600">0</div>
+              <div class="text-xs text-gray-600">Errors</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Interface -->
+      <div class="lg:col-span-2 space-y-6">
+        <!-- Messages -->
+        <div class="bg-white rounded-lg shadow-md flex flex-col h-[600px]">
+          <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 class="text-lg font-semibold text-gray-800">Chat</h2>
+            <button id="btn-clear-chat" class="text-sm text-red-600 hover:text-red-800">
+              Clear Chat
+            </button>
+          </div>
+          
+          <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+            <div class="text-gray-400 text-center py-8">
+              Enter your API key and send a message to start
+            </div>
+          </div>
+
+          <!-- Input Area -->
+          <div class="p-4 border-t border-gray-200">
+            <div class="flex gap-2">
+              <textarea id="user-input" rows="3" 
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                placeholder="Type your message here..."></textarea>
+              <div class="flex flex-col gap-2">
+                <button id="btn-send" 
+                  class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
+                  Send
+                </button>
+                <button id="btn-abort" 
+                  class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium hidden">
+                  Stop
+                </button>
+              </div>
+            </div>
+            <div class="mt-2 flex justify-between items-center text-sm text-gray-500">
+              <span id="token-count">0 tokens</span>
+              <span>Press Enter to send, Shift+Enter for new line</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Messages -->
+        <div class="bg-white rounded-lg shadow-md p-4">
+          <h3 class="text-lg font-semibold text-gray-800 mb-3">System Log</h3>
+          <div id="system-log" class="bg-gray-900 rounded-lg p-4 h-48 overflow-y-auto font-mono text-sm space-y-1">
+            <div class="text-gray-500">System ready. Configure provider settings to begin.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sample Prompts -->
+    <div class="mt-8 bg-white rounded-lg shadow-md p-6">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">Quick Test Prompts</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button class="sample-prompt p-4 bg-blue-50 hover:bg-blue-100 rounded-lg text-left transition" 
+          data-prompt="Explain the concept of recursion in programming. Use a simple analogy.">
+          <div class="font-semibold text-blue-900 mb-1">Explain Recursion</div>
+          <div class="text-sm text-blue-700">Test basic explanation capabilities</div>
+        </button>
+        <button class="sample-prompt p-4 bg-green-50 hover:bg-green-100 rounded-lg text-left transition"
+          data-prompt="Write a Python function that calculates the Fibonacci sequence up to n terms. Include error handling.">
+          <div class="font-semibold text-green-900 mb-1">Code Generation</div>
+          <div class="text-sm text-green-700">Test code writing abilities</div>
+        </button>
+        <button class="sample-prompt p-4 bg-purple-50 hover:bg-purple-100 rounded-lg text-left transition"
+          data-prompt="Analyze the sentiment of this text: 'I absolutely love this product! It exceeded all my expectations and the customer service was outstanding.'">
+          <div class="font-semibold text-purple-900 mb-1">Sentiment Analysis</div>
+          <div class="text-sm text-purple-700">Test analytical capabilities</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+
+  <script type="module">
+    import { APIClient } from '../../../../components/core/api-client/src/index.js';
+
+    // State
+    let client = null;
+    let messages = [];
+    let isStreaming = false;
+    let requestCount = 0;
+    let totalTokens = 0;
+    let totalTime = 0;
+    let errorCount = 0;
+
+    // DOM Elements
+    const providerSelect = document.getElementById('provider-select');
+    const modelSelect = document.getElementById('model-select');
+    const apiKeyInput = document.getElementById('api-key');
+    const baseUrlInput = document.getElementById('base-url');
+    const temperatureInput = document.getElementById('temperature');
+    const tempValue = document.getElementById('temp-value');
+    const maxTokensInput = document.getElementById('max-tokens');
+    const retriesInput = document.getElementById('retries');
+    const timeoutInput = document.getElementById('timeout');
+    const streamToggle = document.getElementById('stream-toggle');
+    const chatMessages = document.getElementById('chat-messages');
+    const userInput = document.getElementById('user-input');
+    const btnSend = document.getElementById('btn-send');
+    const btnAbort = document.getElementById('btn-abort');
+    const systemLog = document.getElementById('system-log');
+    const tokenCount = document.getElementById('token-count');
+
+    // Load API key from localStorage
+    const savedApiKey = localStorage.getItem('GEMINI_API_KEY');
+    if (savedApiKey) {
+      apiKeyInput.value = savedApiKey;
+    }
+    
+    // Save API key to localStorage when changed
+    apiKeyInput.addEventListener('change', () => {
+      const key = apiKeyInput.value.trim();
+      if (key) {
+        localStorage.setItem('GEMINI_API_KEY', key);
+      } else {
+        localStorage.removeItem('GEMINI_API_KEY');
+      }
+    });
+
+    // Toast helper
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500'
+      };
+      toast.className = `${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg fade-in`;
+      toast.innerHTML = `
+        <span>${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span>
+        <span>${message}</span>
+      `;
+      document.getElementById('toast-container').appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Log to system log
+    function logSystem(message, type = 'info') {
+      if (systemLog.children[0]?.classList.contains('text-gray-500')) {
+        systemLog.innerHTML = '';
+      }
+      
+      const entry = document.createElement('div');
+      const colors = {
+        info: 'text-gray-300',
+        success: 'text-green-400',
+        error: 'text-red-400',
+        warn: 'text-yellow-400'
+      };
+      const time = new Date().toLocaleTimeString();
+      entry.className = colors[type];
+      entry.textContent = `[${time}] ${message}`;
+      systemLog.appendChild(entry);
+      systemLog.scrollTop = systemLog.scrollHeight;
+    }
+
+    // Update model options based on provider
+    providerSelect.addEventListener('change', () => {
+      const provider = providerSelect.value;
+      modelSelect.innerHTML = '';
+      
+      if (provider === 'gemini') {
+        modelSelect.innerHTML = `
+          <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+          <option value="gemini-pro">Gemini Pro</option>
+          <option value="gemini-pro-vision">Gemini Pro Vision</option>
+          <option value="gemini-ultra">Gemini Ultra</option>
+        `;
+      } else if (provider === 'openai') {
+        modelSelect.innerHTML = `
+          <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+          <option value="gpt-4">GPT-4</option>
+          <option value="gpt-4-turbo">GPT-4 Turbo</option>
+        `;
+      }
+    });
+
+    // Update temperature display
+    temperatureInput.addEventListener('input', () => {
+      tempValue.textContent = temperatureInput.value;
+    });
+
+    // Update token count
+    userInput.addEventListener('input', () => {
+      const text = userInput.value;
+      const tokens = client ? client.getTokenCount(text) : Math.ceil(text.length / 4);
+      tokenCount.textContent = `${tokens} tokens`;
+    });
+
+    // Add message to chat
+    function addMessage(role, content, isStreaming = false) {
+      // Remove empty state
+      if (chatMessages.children[0]?.classList.contains('text-gray-400')) {
+        chatMessages.innerHTML = '';
+      }
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `p-4 rounded-lg message-${role} fade-in`;
+      
+      const roleLabels = {
+        user: 'You',
+        assistant: 'Assistant',
+        system: 'System'
+      };
+      
+      const roleColors = {
+        user: 'text-blue-800',
+        assistant: 'text-gray-800',
+        system: 'text-yellow-800'
+      };
+      
+      messageDiv.innerHTML = `
+        <div class="font-semibold text-sm mb-1 ${roleColors[role]}">${roleLabels[role]}</div>
+        <div class="text-gray-800 whitespace-pre-wrap ${isStreaming ? 'streaming-cursor' : ''}">${content}</div>
+      `;
+      
+      chatMessages.appendChild(messageDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      
+      return messageDiv;
+    }
+
+    // Update message content
+    function updateMessage(messageDiv, content) {
+      const contentDiv = messageDiv.querySelector('div:last-child');
+      contentDiv.textContent = content;
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Update stats
+    function updateStats(tokens, time, isError = false) {
+      requestCount++;
+      totalTokens += tokens;
+      totalTime += time;
+      if (isError) errorCount++;
+      
+      document.getElementById('stat-requests').textContent = requestCount;
+      document.getElementById('stat-tokens').textContent = totalTokens;
+      document.getElementById('stat-time').textContent = Math.round(totalTime / requestCount) + 'ms';
+      document.getElementById('stat-errors').textContent = errorCount;
+    }
+
+    // Initialize client
+    function initializeClient() {
+      const apiKey = apiKeyInput.value.trim();
+      if (!apiKey) {
+        showToast('Please enter an API key', 'error');
+        return false;
+      }
+
+      try {
+        client = new APIClient();
+        client.initialize({
+          provider: providerSelect.value,
+          apiKey: apiKey,
+          model: modelSelect.value,
+          baseUrl: baseUrlInput.value.trim() || undefined,
+          timeout: parseInt(timeoutInput.value),
+          retries: parseInt(retriesInput.value)
+        });
+        
+        logSystem(`Initialized ${providerSelect.value} client with model ${modelSelect.value}`, 'success');
+        return true;
+      } catch (error) {
+        logSystem(`Failed to initialize: ${error.message}`, 'error');
+        showToast('Failed to initialize client', 'error');
+        return false;
+      }
+    }
+
+    // Send message
+    async function sendMessage() {
+      const content = userInput.value.trim();
+      if (!content) return;
+
+      if (!client && !initializeClient()) {
+        return;
+      }
+
+      // Add user message
+      addMessage('user', content);
+      messages.push({ role: 'user', content });
+      userInput.value = '';
+      tokenCount.textContent = '0 tokens';
+
+      // Show loading state
+      btnSend.disabled = true;
+      btnSend.textContent = 'Sending...';
+      btnAbort.classList.remove('hidden');
+      isStreaming = true;
+
+      const startTime = Date.now();
+      const assistantMessage = addMessage('assistant', '', true);
+      let fullContent = '';
+
+      try {
+        const request = {
+          messages: messages,
+          temperature: parseFloat(temperatureInput.value),
+          maxTokens: parseInt(maxTokensInput.value)
+        };
+
+        if (streamToggle.checked) {
+          // Streaming request
+          logSystem('Sending streaming request...', 'info');
+          
+          await client.streamRequest(request, (chunk) => {
+            fullContent += chunk;
+            updateMessage(assistantMessage, fullContent);
+          });
+          
+          assistantMessage.querySelector('div:last-child').classList.remove('streaming-cursor');
+        } else {
+          // Non-streaming request
+          logSystem('Sending request...', 'info');
+          
+          const response = await client.sendRequest(request);
+          fullContent = response.content;
+          updateMessage(assistantMessage, fullContent);
+        }
+
+        // Add to message history
+        messages.push({ role: 'assistant', content: fullContent });
+        
+        // Update stats
+        const time = Date.now() - startTime;
+        const tokens = client.getTokenCount(content + fullContent);
+        updateStats(tokens, time);
+        
+        logSystem(`Request completed in ${time}ms`, 'success');
+        showToast('Response received', 'success');
+        
+      } catch (error) {
+        assistantMessage.querySelector('div:last-child').classList.remove('streaming-cursor');
+        updateMessage(assistantMessage, `Error: ${error.message}`);
+        assistantMessage.classList.add('bg-red-50');
+        
+        updateStats(0, Date.now() - startTime, true);
+        logSystem(`Error: ${error.message}`, 'error');
+        showToast(error.message, 'error');
+      } finally {
+        btnSend.disabled = false;
+        btnSend.textContent = 'Send';
+        btnAbort.classList.add('hidden');
+        isStreaming = false;
+      }
+    }
+
+    // Abort request
+    btnAbort.addEventListener('click', () => {
+      if (client && isStreaming) {
+        client.abort();
+        logSystem('Request aborted', 'warn');
+        showToast('Request aborted', 'info');
+      }
+    });
+
+    // Send button
+    btnSend.addEventListener('click', sendMessage);
+
+    // Enter key to send
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Clear chat
+    document.getElementById('btn-clear-chat').addEventListener('click', () => {
+      messages = [];
+      chatMessages.innerHTML = '<div class="text-gray-400 text-center py-8">Chat cleared. Start a new conversation.</div>';
+      logSystem('Chat cleared', 'info');
+    });
+
+    // Sample prompts
+    document.querySelectorAll('.sample-prompt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        userInput.value = btn.dataset.prompt;
+        userInput.focus();
+        // Trigger token count update
+        userInput.dispatchEvent(new Event('input'));
+      });
+    });
+
+    // Initial log
+    logSystem('API Client Demo loaded', 'info');
+  </script>
+</body>
+</html>

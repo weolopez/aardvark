@@ -1,0 +1,22 @@
+{
+  "name": "@aardvark/message-bridge",
+  "version": "0.1.0",
+  "description": "Bidirectional communication between Main Thread and Web Worker via Event Bus",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Open tests/unit/message-bridge.spec.html in a browser\""
+  },
+  "keywords": [
+    "web-worker",
+    "message-bridge",
+    "event-bus",
+    "communication",
+    "bidirectional"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@aardvark/event-bus": "workspace:*"
+  }
+}

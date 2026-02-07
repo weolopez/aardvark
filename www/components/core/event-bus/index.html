@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - Event Bus Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .log-entry { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-6xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">Aardvark Event Bus</h1>
+      <p class="text-gray-600">Pub/sub messaging system demonstration</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Left Column: Controls -->
+      <div class="space-y-6">
+        <!-- Subscribe Section -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Subscribe to Events</h2>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
+              <input type="text" id="sub-event" placeholder="user:login" 
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button id="btn-subscribe" 
+              class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition">
+              Subscribe
+            </button>
+          </div>
+        </div>
+
+        <!-- Publish Section -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Publish Events</h2>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Event Name</label>
+              <input type="text" id="pub-event" placeholder="user:login" 
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Data (JSON)</label>
+              <textarea id="pub-data" rows="3" placeholder='{"message": "Hello"}' 
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"></textarea>
+            </div>
+            <button id="btn-publish" 
+              class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition">
+              Publish Event
+            </button>
+          </div>
+        </div>
+
+        <!-- System Events -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">System Events</h2>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="sys-event-btn bg-gray-100 hover:bg-gray-200 py-2 px-3 rounded text-sm" data-event="system:ready">
+              system:ready
+            </button>
+            <button class="sys-event-btn bg-gray-100 hover:bg-gray-200 py-2 px-3 rounded text-sm" data-event="tool:call">
+              tool:call
+            </button>
+            <button class="sys-event-btn bg-gray-100 hover:bg-gray-200 py-2 px-3 rounded text-sm" data-event="tool:result">
+              tool:result
+            </button>
+            <button class="sys-event-btn bg-gray-100 hover:bg-gray-200 py-2 px-3 rounded text-sm" data-event="session:update">
+              session:update
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Monitor & Logs -->
+      <div class="space-y-6">
+        <!-- Active Subscriptions -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">Active Subscriptions</h2>
+            <button id="btn-clear-subs" class="text-sm text-red-600 hover:text-red-800">
+              Clear All
+            </button>
+          </div>
+          <div id="subscriptions-list" class="space-y-2 max-h-48 overflow-y-auto">
+            <p class="text-gray-500 text-sm italic">No active subscriptions</p>
+          </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold text-gray-800">Event Log</h2>
+            <button id="btn-clear-log" class="text-sm text-gray-600 hover:text-gray-800">
+              Clear Log
+            </button>
+          </div>
+          <div id="event-log" class="space-y-2 max-h-96 overflow-y-auto font-mono text-sm">
+            <p class="text-gray-500 italic">Event log is empty</p>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Statistics</h2>
+          <div class="grid grid-cols-3 gap-4 text-center">
+            <div class="bg-blue-50 rounded-lg p-3">
+              <div id="stat-subscriptions" class="text-2xl font-bold text-blue-600">0</div>
+              <div class="text-sm text-gray-600">Subscriptions</div>
+            </div>
+            <div class="bg-green-50 rounded-lg p-3">
+              <div id="stat-events" class="text-2xl font-bold text-green-600">0</div>
+              <div class="text-sm text-gray-600">Events Published</div>
+            </div>
+            <div class="bg-purple-50 rounded-lg p-3">
+              <div id="stat-handlers" class="text-2xl font-bold text-purple-600">0</div>
+              <div class="text-sm text-gray-600">Handlers Called</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { EventBus, SystemEvents } from '../../../../components/core/event-bus/src/index.js';
+
+    // Create event bus instance
+    const bus = new EventBus();
+    
+    // State
+    const subscriptions = new Map();
+    let eventCount = 0;
+    let handlerCount = 0;
+    let subIdCounter = 0;
+
+    // DOM Elements
+    const subEventInput = document.getElementById('sub-event');
+    const pubEventInput = document.getElementById('pub-event');
+    const pubDataInput = document.getElementById('pub-data');
+    const subscriptionsList = document.getElementById('subscriptions-list');
+    const eventLog = document.getElementById('event-log');
+    const statSubscriptions = document.getElementById('stat-subscriptions');
+    const statEvents = document.getElementById('stat-events');
+    const statHandlers = document.getElementById('stat-handlers');
+
+    // Helper: Add log entry
+    function addLogEntry(type, event, data) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry p-2 rounded bg-gray-50 border-l-4 ' + 
+        (type === 'published' ? 'border-green-500' : 'border-blue-500');
+      
+      const time = new Date().toLocaleTimeString();
+      const dataStr = data ? JSON.stringify(data).substring(0, 100) : '{}';
+      
+      entry.innerHTML = `
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span>${time}</span>
+          <span class="font-semibold ${type === 'published' ? 'text-green-600' : 'text-blue-600'}">${type}</span>
+        </div>
+        <div class="font-semibold text-gray-800">${event}</div>
+        <div class="text-gray-600 text-xs mt-1 truncate">${dataStr}</div>
+      `;
+      
+      // Remove empty message
+      if (eventLog.children[0]?.classList.contains('italic')) {
+        eventLog.innerHTML = '';
+      }
+      
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    // Helper: Update subscriptions display
+    function updateSubscriptionsList() {
+      if (subscriptions.size === 0) {
+        subscriptionsList.innerHTML = '<p class="text-gray-500 text-sm italic">No active subscriptions</p>';
+      } else {
+        subscriptionsList.innerHTML = '';
+        subscriptions.forEach((info, id) => {
+          const item = document.createElement('div');
+          item.className = 'flex justify-between items-center bg-blue-50 p-2 rounded';
+          item.innerHTML = `
+            <span class="font-medium text-blue-800">${info.event}</span>
+            <button class="text-red-600 hover:text-red-800 text-sm" data-id="${id}">Unsubscribe</button>
+          `;
+          item.querySelector('button').addEventListener('click', () => unsubscribe(id));
+          subscriptionsList.appendChild(item);
+        });
+      }
+      statSubscriptions.textContent = subscriptions.size;
+    }
+
+    // Helper: Update stats
+    function updateStats() {
+      statEvents.textContent = eventCount;
+      statHandlers.textContent = handlerCount;
+    }
+
+    // Subscribe
+    function subscribe() {
+      const event = subEventInput.value.trim();
+      if (!event) {
+        alert('Please enter an event name');
+        return;
+      }
+
+      const id = ++subIdCounter;
+      
+      const handler = (data) => {
+        handlerCount++;
+        addLogEntry('received', event, data);
+        updateStats();
+      };
+
+      bus.subscribe(event, handler);
+      subscriptions.set(id, { event, handler });
+      
+      subEventInput.value = '';
+      updateSubscriptionsList();
+      
+      // Log subscription
+      addLogEntry('subscribed', event, { subscriptionId: id });
+    }
+
+    // Unsubscribe
+    function unsubscribe(id) {
+      const info = subscriptions.get(id);
+      if (!info) return;
+
+      bus.unsubscribe(id);
+      subscriptions.delete(id);
+      updateSubscriptionsList();
+      addLogEntry('unsubscribed', info.event, { subscriptionId: id });
+    }
+
+    // Publish
+    function publish() {
+      const event = pubEventInput.value.trim();
+      if (!event) {
+        alert('Please enter an event name');
+        return;
+      }
+
+      let data = {};
+      try {
+        if (pubDataInput.value.trim()) {
+          data = JSON.parse(pubDataInput.value);
+        }
+      } catch (e) {
+        alert('Invalid JSON data: ' + e.message);
+        return;
+      }
+
+      bus.publish(event, data);
+      eventCount++;
+      
+      addLogEntry('published', event, data);
+      updateStats();
+    }
+
+    // Event listeners
+    document.getElementById('btn-subscribe').addEventListener('click', subscribe);
+    document.getElementById('btn-publish').addEventListener('click', publish);
+    
+    document.getElementById('btn-clear-subs').addEventListener('click', () => {
+      subscriptions.forEach((info, id) => bus.unsubscribe(id));
+      subscriptions.clear();
+      updateSubscriptionsList();
+    });
+    
+    document.getElementById('btn-clear-log').addEventListener('click', () => {
+      eventLog.innerHTML = '<p class="text-gray-500 italic">Event log is empty</p>';
+    });
+
+    // System event buttons
+    document.querySelectorAll('.sys-event-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        pubEventInput.value = btn.dataset.event;
+        pubDataInput.value = JSON.stringify({ timestamp: Date.now() }, null, 2);
+      });
+    });
+
+    // Initial welcome event
+    setTimeout(() => {
+      bus.publish(SystemEvents.SYSTEM_READY, { 
+        timestamp: Date.now(),
+        message: 'Event Bus Demo Ready'
+      });
+      addLogEntry('published', SystemEvents.SYSTEM_READY, { message: 'Event Bus Demo Ready' });
+      eventCount++;
+      updateStats();
+    }, 500);
+  </script>
+</body>
+</html>

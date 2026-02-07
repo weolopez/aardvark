@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EventBus Integration Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">EventBus Integration Tests</h1>
+      <p class="text-gray-600 mt-2">Cross-component communication tests</p>
+    </header>
+
+    <!-- Test Results -->
+    <div id="test-results" class="space-y-4">
+      <!-- Tests will be inserted here -->
+    </div>
+
+    <!-- Summary -->
+    <div id="summary" class="mt-8 bg-white rounded-lg shadow-md p-6">
+      <div class="flex justify-between items-center">
+        <span class="text-gray-600">Status:</span>
+        <span id="status" class="text-lg font-semibold text-gray-700">Running...</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { EventBus } from '../../src/index.js';
+
+    // Mock Components
+    class MockComponent {
+      constructor(name, eventBus) {
+        this.name = name;
+        this.eventBus = eventBus;
+        this.eventsReceived = [];
+      }
+
+      subscribe(event) {
+        this.eventBus.subscribe(event, (data) => {
+          this.eventsReceived.push({ event, data, timestamp: Date.now() });
+        });
+      }
+
+      publish(event, data) {
+        this.eventBus.publish(event, data);
+      }
+    }
+
+    // Test Framework
+    const results = document.getElementById('test-results');
+    let passCount = 0;
+    let failCount = 0;
+
+    function test(name, fn) {
+      const el = document.createElement('div');
+      el.className = 'bg-white p-4 rounded-lg shadow-md border-l-4 border-gray-300';
+      el.innerHTML = `<div class="font-medium">${name}</div><div class="text-sm mt-1"></div>`;
+      results.appendChild(el);
+
+      try {
+        fn();
+        passCount++;
+        el.className = 'bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500';
+        el.querySelector('div:first-child').innerHTML = `✓ ${name}`;
+      } catch (error) {
+        failCount++;
+        el.className = 'bg-white p-4 rounded-lg shadow-md border-l-4 border-red-500';
+        el.querySelector('div:first-child').innerHTML = `✗ ${name}`;
+        el.querySelector('div:last-child').textContent = error.message;
+        el.querySelector('div:last-child').className = 'text-sm mt-1 text-red-600';
+      }
+    }
+
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(`${message}: expected ${expected}, got ${actual}`);
+      }
+    }
+
+    function assertTrue(value, message) {
+      if (!value) throw new Error(message || 'Expected true');
+    }
+
+    // Integration Tests
+
+    test('Multiple components communicate via shared EventBus', () => {
+      const bus = new EventBus();
+      const comp1 = new MockComponent('Comp1', bus);
+      const comp2 = new MockComponent('Comp2', bus);
+      
+      comp1.subscribe('shared-event');
+      comp2.subscribe('shared-event');
+      
+      comp1.publish('shared-event', { message: 'Hello' });
+      
+      assertEqual(comp1.eventsReceived.length, 1, 'Comp1 should receive');
+      assertEqual(comp2.eventsReceived.length, 1, 'Comp2 should receive');
+    });
+
+    test('Component can subscribe to multiple events', () => {
+      const bus = new EventBus();
+      const comp = new MockComponent('MultiComp', bus);
+      
+      comp.subscribe('event-a');
+      comp.subscribe('event-b');
+      comp.subscribe('event-c');
+      
+      comp.publish('event-a', { id: 1 });
+      comp.publish('event-b', { id: 2 });
+      
+      assertEqual(comp.eventsReceived.length, 2, 'Should receive 2 events');
+      assertEqual(comp.eventsReceived[0].event, 'event-a');
+      assertEqual(comp.eventsReceived[1].event, 'event-b');
+    });
+
+    test('Component lifecycle: subscribe, use, unsubscribe', () => {
+      const bus = new EventBus();
+      const comp = new MockComponent('LifecycleComp', bus);
+      
+      // Subscribe
+      const id = bus.subscribe('lifecycle-test', (data) => {
+        comp.eventsReceived.push(data);
+      });
+      
+      // Use
+      bus.publish('lifecycle-test', { phase: 'active' });
+      assertEqual(comp.eventsReceived.length, 1);
+      
+      // Unsubscribe
+      bus.unsubscribe(id);
+      bus.publish('lifecycle-test', { phase: 'inactive' });
+      
+      // Should not receive after unsubscribe
+      assertEqual(comp.eventsReceived.length, 1, 'Should not receive after unsubscribe');
+    });
+
+    test('EventBus survives component destruction', () => {
+      const bus = new EventBus();
+      let received = 0;
+      
+      // Create and destroy component
+      {
+        const comp = new MockComponent('Temp', bus);
+        comp.subscribe('survivor');
+        bus.subscribe('survivor', () => received++);
+      }
+      
+      // Component is out of scope, but bus should still work
+      bus.publish('survivor', {});
+      assertEqual(received, 1, 'EventBus should still work');
+    });
+
+    test('Complex scenario: Chat application simulation', () => {
+      const bus = new EventBus();
+      
+      // Simulate a chat application with multiple components
+      const chatHistory = [];
+      const notifications = [];
+      const userStatus = { online: true };
+      
+      // Chat component
+      bus.subscribe('chat:message', (msg) => {
+        chatHistory.push(msg);
+      });
+      
+      // Notification component
+      bus.subscribe('chat:message', (msg) => {
+        if (msg.priority === 'high') {
+          notifications.push(msg);
+        }
+      });
+      
+      // User status component
+      bus.subscribe('user:status', (status) => {
+        userStatus.online = status.online;
+      });
+      
+      // Simulate activity
+      bus.publish('chat:message', { text: 'Hello', priority: 'normal' });
+      bus.publish('chat:message', { text: 'Urgent!', priority: 'high' });
+      bus.publish('user:status', { online: false });
+      
+      assertEqual(chatHistory.length, 2, 'Chat history should have 2 messages');
+      assertEqual(notifications.length, 1, 'Should have 1 high priority notification');
+      assertEqual(userStatus.online, false, 'User should be offline');
+    });
+
+    test('Performance: Many subscribers, single event', () => {
+      const bus = new EventBus();
+      let count = 0;
+      const subscribers = 100;
+      
+      for (let i = 0; i < subscribers; i++) {
+        bus.subscribe('perf-test', () => count++);
+      }
+      
+      bus.publish('perf-test', {});
+      
+      assertEqual(count, subscribers, `All ${subscribers} subscribers should be called`);
+    });
+
+    // Show summary
+    const status = document.getElementById('status');
+    const total = passCount + failCount;
+    if (failCount === 0) {
+      status.className = 'text-lg font-semibold text-green-600';
+      status.textContent = `✓ All ${passCount} tests passed`;
+    } else {
+      status.className = 'text-lg font-semibold text-red-600';
+      status.textContent = `✗ ${failCount} of ${total} tests failed`;
+    }
+    
+    // Report to parent window
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: 'test-complete',
+        total: total,
+        passed: passCount,
+        failed: failCount
+      }, '*');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - Message Bridge Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .pulse-green { animation: pulseGreen 2s infinite; }
+    @keyframes pulseGreen {
+      0%, 100% { background-color: #dcfce7; }
+      50% { background-color: #bbf7d0; }
+    }
+    .pulse-blue { animation: pulseBlue 2s infinite; }
+    @keyframes pulseBlue {
+      0%, 100% { background-color: #dbeafe; }
+      50% { background-color: #bfdbfe; }
+    }
+    .message-main { border-left: 4px solid #3b82f6; }
+    .message-worker { border-left: 4px solid #10b981; }
+    .connection-line {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, #3b82f6, #10b981);
+      transform: translateX(-50%);
+    }
+    .arrow-down {
+      animation: bounceDown 1s infinite;
+    }
+    .arrow-up {
+      animation: bounceUp 1s infinite;
+    }
+    @keyframes bounceDown {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(5px); }
+    }
+    @keyframes bounceUp {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">Message Bridge</h1>
+      <p class="text-gray-600">Bidirectional communication between Main Thread and Web Worker via Event Bus</p>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center gap-4">
+          <div id="main-status" class="flex items-center gap-2">
+            <div class="w-3 h-3 rounded-full bg-gray-400"></div>
+            <span class="text-sm font-medium text-gray-700">Main Thread</span>
+          </div>
+          <div id="connection-status" class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+            Disconnected
+          </div>
+          <div id="worker-status" class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700">Web Worker</span>
+            <div class="w-3 h-3 rounded-full bg-gray-400"></div>
+          </div>
+        </div>
+        <button id="btn-toggle-bridge" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+          Start Bridge
+        </button>
+      </div>
+    </div>
+
+    <!-- Two-Column Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      
+      <!-- Main Thread Panel -->
+      <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="bg-blue-600 text-white px-6 py-4">
+          <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold">Main Thread</h2>
+            <span class="text-sm bg-blue-500 px-3 py-1 rounded-full">UI Context</span>
+          </div>
+        </div>
+        
+        <div class="p-6 space-y-6">
+          <!-- Event Bus Section -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Local Event Bus</h3>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="flex gap-2 mb-3">
+                <input type="text" id="main-event-name" placeholder="Event name" 
+                  class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <input type="text" id="main-event-data" placeholder='{"key": "value"}' 
+                  class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+                <button id="btn-main-publish" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">
+                  Publish
+                </button>
+              </div>
+              <div id="main-subscriptions" class="space-y-2">
+                <div class="text-sm text-gray-500">Active subscriptions will appear here...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Forwarding Configuration -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Forward to Worker</h3>
+            <div class="flex gap-2 mb-3">
+              <input type="text" id="main-forward-event" placeholder="Event to forward" 
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <button id="btn-add-main-forward" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm">
+                Add
+              </button>
+            </div>
+            <div id="main-forward-list" class="flex flex-wrap gap-2">
+              <span class="text-sm text-gray-500">No events configured to forward</span>
+            </div>
+          </div>
+
+          <!-- Receive Configuration -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Receive from Worker</h3>
+            <div class="flex gap-2 mb-3">
+              <input type="text" id="main-receive-event" placeholder="Event to receive" 
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <button id="btn-add-main-receive" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm">
+                Add
+              </button>
+            </div>
+            <div id="main-receive-list" class="flex flex-wrap gap-2">
+              <span class="text-sm text-gray-500">Receiving all events (no filter)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Web Worker Panel -->
+      <div class="bg-white rounded-lg shadow-md overflow-hidden">
+        <div class="bg-green-600 text-white px-6 py-4">
+          <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold">Web Worker</h2>
+            <span class="text-sm bg-green-500 px-3 py-1 rounded-full">Background Context</span>
+          </div>
+        </div>
+        
+        <div class="p-6 space-y-6">
+          <!-- Event Bus Section -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Local Event Bus</h3>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="flex gap-2 mb-3">
+                <input type="text" id="worker-event-name" placeholder="Event name" 
+                  class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <input type="text" id="worker-event-data" placeholder='{"key": "value"}' 
+                  class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono">
+                <button id="btn-worker-simulate" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm">
+                  Simulate
+                </button>
+              </div>
+              <div class="text-sm text-gray-600 bg-yellow-50 p-3 rounded">
+                💡 In a real worker, events would be published from worker code. 
+                This demo simulates worker-side events for demonstration.
+              </div>
+            </div>
+          </div>
+
+          <!-- Forwarding Configuration -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Forward to Main</h3>
+            <div class="flex gap-2 mb-3">
+              <input type="text" id="worker-forward-event" placeholder="Event to forward" 
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <button id="btn-add-worker-forward" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm">
+                Add
+              </button>
+            </div>
+            <div id="worker-forward-list" class="flex flex-wrap gap-2">
+              <span class="text-sm text-gray-500">No events configured to forward</span>
+            </div>
+          </div>
+
+          <!-- Worker State -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Worker State</h3>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span class="text-gray-600">Status:</span>
+                  <span id="worker-state-status" class="font-medium ml-2">Stopped</span>
+                </div>
+                <div>
+                  <span class="text-gray-600">Messages Sent:</span>
+                  <span id="worker-messages-sent" class="font-medium ml-2">0</span>
+                </div>
+                <div>
+                  <span class="text-gray-600">Messages Received:</span>
+                  <span id="worker-messages-received" class="font-medium ml-2">0</span>
+                </div>
+                <div>
+                  <span class="text-gray-600">Active Subs:</span>
+                  <span id="worker-sub-count" class="font-medium ml-2">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message Log -->
+    <div class="mt-6 bg-white rounded-lg shadow-md">
+      <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <h3 class="text-lg font-semibold text-gray-800">Message Log</h3>
+        <div class="flex gap-4 text-sm">
+          <div class="flex items-center gap-2">
+            <div class="w-3 h-3 bg-blue-500 rounded"></div>
+            <span class="text-gray-600">Main Thread</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-3 h-3 bg-green-500 rounded"></div>
+            <span class="text-gray-600">Web Worker</span>
+          </div>
+        </div>
+      </div>
+      <div id="message-log" class="p-4 h-80 overflow-y-auto font-mono text-sm space-y-2">
+        <div class="text-gray-400 text-center py-8">Start the bridge to see messages...</div>
+      </div>
+    </div>
+
+    <!-- Demo Scenarios -->
+    <div class="mt-6 bg-white rounded-lg shadow-md p-6">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">Quick Demo Scenarios</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button id="scenario-1" class="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg text-left transition">
+          <div class="font-semibold text-blue-900 mb-1">Echo Test</div>
+          <div class="text-sm text-blue-700">Send a message from main, worker echoes it back</div>
+        </button>
+        <button id="scenario-2" class="p-4 bg-green-50 hover:bg-green-100 rounded-lg text-left transition">
+          <div class="font-semibold text-green-900 mb-1">Computation</div>
+          <div class="text-sm text-green-700">Send data to worker, receive processed result</div>
+        </button>
+        <button id="scenario-3" class="p-4 bg-purple-50 hover:bg-purple-100 rounded-lg text-left transition">
+          <div class="font-semibold text-purple-900 mb-1">Multi-Event</div>
+          <div class="text-sm text-purple-700">Fire multiple events, watch them all flow through</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+
+  <script type="module">
+    import { MessageBridgeMain } from '../../../../components/core/message-bridge/src/index.js';
+    import { EventBus } from '../../../../components/core/event-bus/src/index.js';
+
+    // State
+    let bridge = null;
+    let mainEventBus = new EventBus();
+    let isRunning = false;
+    let mainForwardEvents = new Set();
+    let mainReceiveEvents = new Set();
+    let workerForwardEvents = new Set();
+    let messageCount = { main: 0, worker: 0 };
+    let mainSubscriptions = new Map();
+    let subIdCounter = 0;
+
+    // DOM Elements
+    const btnToggle = document.getElementById('btn-toggle-bridge');
+    const mainStatus = document.getElementById('main-status');
+    const workerStatus = document.getElementById('worker-status');
+    const connectionStatus = document.getElementById('connection-status');
+    const messageLog = document.getElementById('message-log');
+    const mainSubscriptionsEl = document.getElementById('main-subscriptions');
+
+    // Toast helper
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500'
+      };
+      toast.className = `${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg fade-in`;
+      toast.innerHTML = `
+        <span>${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span>
+        <span>${message}</span>
+      `;
+      document.getElementById('toast-container').appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Log message
+    function logMessage(direction, event, data, source) {
+      // Remove empty message
+      if (messageLog.children[0]?.classList.contains('text-gray-400')) {
+        messageLog.innerHTML = '';
+      }
+
+      const entry = document.createElement('div');
+      const isMain = source === 'main';
+      entry.className = `p-3 rounded-lg ${isMain ? 'message-main bg-blue-50' : 'message-worker bg-green-50'} fade-in`;
+      
+      const time = new Date().toLocaleTimeString();
+      const arrow = direction === 'out' ? '→' : '←';
+      const target = isMain ? 'Worker' : 'Main';
+      
+      entry.innerHTML = `
+        <div class="flex justify-between items-start">
+          <div>
+            <span class="text-xs text-gray-500">[${time}]</span>
+            <span class="font-semibold ${isMain ? 'text-blue-700' : 'text-green-700'} ml-2">
+              ${arrow} ${event}
+            </span>
+            <span class="text-xs text-gray-500 ml-2">to ${target}</span>
+          </div>
+          <span class="text-xs px-2 py-1 rounded ${isMain ? 'bg-blue-200 text-blue-800' : 'bg-green-200 text-green-800'}">
+            ${source}
+          </span>
+        </div>
+        <pre class="mt-2 text-xs text-gray-600 overflow-x-auto">${JSON.stringify(data, null, 2)}</pre>
+      `;
+      
+      messageLog.insertBefore(entry, messageLog.firstChild);
+      
+      // Keep only last 50 messages
+      while (messageLog.children.length > 50) {
+        messageLog.removeChild(messageLog.lastChild);
+      }
+
+      // Update counts
+      if (isMain) {
+        messageCount.main++;
+        document.getElementById('worker-messages-received').textContent = messageCount.main;
+      } else {
+        messageCount.worker++;
+        document.getElementById('worker-messages-sent').textContent = messageCount.worker;
+      }
+    }
+
+    // Update UI status
+    function updateStatus(status) {
+      const mainDot = mainStatus.querySelector('div');
+      const workerDot = workerStatus.querySelector('div');
+      
+      if (status === 'connected') {
+        mainDot.className = 'w-3 h-3 rounded-full bg-green-500 pulse-green';
+        workerDot.className = 'w-3 h-3 rounded-full bg-green-500 pulse-green';
+        connectionStatus.className = 'px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700';
+        connectionStatus.textContent = 'Connected';
+        btnToggle.textContent = 'Stop Bridge';
+        btnToggle.className = 'px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition';
+        document.getElementById('worker-state-status').textContent = 'Running';
+        isRunning = true;
+      } else {
+        mainDot.className = 'w-3 h-3 rounded-full bg-gray-400';
+        workerDot.className = 'w-3 h-3 rounded-full bg-gray-400';
+        connectionStatus.className = 'px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600';
+        connectionStatus.textContent = 'Disconnected';
+        btnToggle.textContent = 'Start Bridge';
+        btnToggle.className = 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition';
+        document.getElementById('worker-state-status').textContent = 'Stopped';
+        isRunning = false;
+      }
+    }
+
+    // Start/Stop bridge
+    async function toggleBridge() {
+      if (isRunning) {
+        // Stop
+        if (bridge) {
+          bridge.terminate();
+          bridge = null;
+        }
+        updateStatus('disconnected');
+        showToast('Bridge stopped', 'info');
+      } else {
+        // Start
+        try {
+          // Create worker code as blob (since we can't easily create a separate worker file in demo)
+          const workerCode = `
+            // Simulated Web Worker for Message Bridge Demo
+            // In real usage, this would be a separate file with ES module imports
+            
+            let forwardEvents = new Set([${Array.from(workerForwardEvents).map(e => `'${e}'`).join(',')}]);
+            
+            self.onmessage = function(event) {
+              const { type, event: eventName, data } = event.data;
+              
+              if (type === 'bridge-message') {
+                // Simulate worker receiving event from main
+                // In real usage, this would publish to worker's EventBus
+                self.postMessage({
+                  type: 'worker-received',
+                  event: eventName,
+                  data: data
+                });
+                
+                // Simulate worker processing and responding
+                setTimeout(() => {
+                  if (forwardEvents.has('worker:result') || forwardEvents.has('echo:response')) {
+                    self.postMessage({
+                      type: 'bridge-message',
+                      event: eventName + ':response',
+                      data: { 
+                        original: data, 
+                        processed: true, 
+                        timestamp: Date.now(),
+                        source: 'worker'
+                      }
+                    });
+                  }
+                }, 500);
+              }
+            };
+            
+            // Signal ready
+            self.postMessage({ type: 'ready' });
+          `;
+          
+          const blob = new Blob([workerCode], { type: 'application/javascript' });
+          const workerUrl = URL.createObjectURL(blob);
+          
+          bridge = new MessageBridgeMain({
+            workerUrl: workerUrl,
+            eventBus: mainEventBus,
+            forwardEvents: Array.from(mainForwardEvents),
+            receiveEvents: mainReceiveEvents.size > 0 ? Array.from(mainReceiveEvents) : undefined
+          });
+          
+          // Listen for messages from worker
+          mainEventBus.subscribe('bridge:message', (msg) => {
+            if (msg && msg.event) {
+              logMessage('in', msg.event, msg.data, 'worker');
+            }
+          });
+          
+          await bridge.init();
+          updateStatus('connected');
+          showToast('Bridge started successfully', 'success');
+          
+          // Initial log
+          logMessage('out', 'bridge:connect', { status: 'connected' }, 'main');
+          
+        } catch (error) {
+          console.error('Failed to start bridge:', error);
+          showToast('Failed to start bridge: ' + error.message, 'error');
+        }
+      }
+    }
+
+    btnToggle.addEventListener('click', toggleBridge);
+
+    // Main Thread: Publish event
+    document.getElementById('btn-main-publish').addEventListener('click', () => {
+      const event = document.getElementById('main-event-name').value.trim();
+      const dataStr = document.getElementById('main-event-data').value.trim();
+      
+      if (!event) {
+        showToast('Please enter an event name', 'error');
+        return;
+      }
+      
+      let data = {};
+      if (dataStr) {
+        try {
+          data = JSON.parse(dataStr);
+        } catch (e) {
+          data = { value: dataStr };
+        }
+      }
+      
+      mainEventBus.publish(event, data);
+      
+      // Create subscription if new
+      if (!mainSubscriptions.has(event)) {
+        const id = ++subIdCounter;
+        const handler = (receivedData) => {
+          // Only log if it's a response or from worker
+          if (receivedData && receivedData.source === 'worker') {
+            // Already logged via bridge:message event
+          }
+        };
+        mainEventBus.subscribe(event, handler);
+        mainSubscriptions.set(event, { id, handler });
+        updateMainSubscriptions();
+      }
+      
+      logMessage('local', event, data, 'main');
+      showToast(`Published "${event}"`, 'success');
+    });
+
+    function updateMainSubscriptions() {
+      if (mainSubscriptions.size === 0) {
+        mainSubscriptionsEl.innerHTML = '<div class="text-sm text-gray-500">Active subscriptions will appear here...</div>';
+      } else {
+        mainSubscriptionsEl.innerHTML = Array.from(mainSubscriptions.keys()).map(event => `
+          <div class="flex justify-between items-center bg-blue-50 p-2 rounded text-sm">
+            <span class="font-medium text-blue-800">${event}</span>
+            <button onclick="unsubscribeMain('${event}')" class="text-red-600 hover:text-red-800 text-xs">Remove</button>
+          </div>
+        `).join('');
+      }
+      document.getElementById('worker-sub-count').textContent = mainSubscriptions.size;
+    }
+
+    window.unsubscribeMain = function(event) {
+      const sub = mainSubscriptions.get(event);
+      if (sub) {
+        // Note: EventBus doesn't have direct unsubscribe by handler in current API
+        // This is a simplified version
+        mainSubscriptions.delete(event);
+        updateMainSubscriptions();
+      }
+    };
+
+    // Main Thread: Add forward event
+    document.getElementById('btn-add-main-forward').addEventListener('click', () => {
+      const event = document.getElementById('main-forward-event').value.trim();
+      if (event) {
+        mainForwardEvents.add(event);
+        updateMainForwardList();
+        if (bridge) {
+          bridge.forwardEvent(event);
+        }
+        document.getElementById('main-forward-event').value = '';
+        showToast(`Now forwarding "${event}" to worker`, 'success');
+      }
+    });
+
+    function updateMainForwardList() {
+      const list = document.getElementById('main-forward-list');
+      if (mainForwardEvents.size === 0) {
+        list.innerHTML = '<span class="text-sm text-gray-500">No events configured to forward</span>';
+      } else {
+        list.innerHTML = Array.from(mainForwardEvents).map(event => `
+          <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+            ${event}
+            <button onclick="removeMainForward('${event}')" class="ml-1 text-blue-600 hover:text-blue-900">×</button>
+          </span>
+        `).join('');
+      }
+    }
+
+    window.removeMainForward = function(event) {
+      mainForwardEvents.delete(event);
+      updateMainForwardList();
+      if (bridge) {
+        bridge.stopForwardingEvent(event);
+      }
+    };
+
+    // Main Thread: Add receive event
+    document.getElementById('btn-add-main-receive').addEventListener('click', () => {
+      const event = document.getElementById('main-receive-event').value.trim();
+      if (event) {
+        mainReceiveEvents.add(event);
+        updateMainReceiveList();
+        document.getElementById('main-receive-event').value = '';
+        showToast(`Now receiving "${event}" from worker`, 'success');
+      }
+    });
+
+    function updateMainReceiveList() {
+      const list = document.getElementById('main-receive-list');
+      if (mainReceiveEvents.size === 0) {
+        list.innerHTML = '<span class="text-sm text-gray-500">Receiving all events (no filter)</span>';
+      } else {
+        list.innerHTML = Array.from(mainReceiveEvents).map(event => `
+          <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+            ${event}
+            <button onclick="removeMainReceive('${event}')" class="ml-1 text-green-600 hover:text-green-900">×</button>
+          </span>
+        `).join('');
+      }
+    }
+
+    window.removeMainReceive = function(event) {
+      mainReceiveEvents.delete(event);
+      updateMainReceiveList();
+    };
+
+    // Worker: Simulate event
+    document.getElementById('btn-worker-simulate').addEventListener('click', () => {
+      if (!isRunning) {
+        showToast('Start the bridge first', 'error');
+        return;
+      }
+      
+      const event = document.getElementById('worker-event-name').value.trim();
+      const dataStr = document.getElementById('worker-event-data').value.trim();
+      
+      if (!event) {
+        showToast('Please enter an event name', 'error');
+        return;
+      }
+      
+      let data = {};
+      if (dataStr) {
+        try {
+          data = JSON.parse(dataStr);
+        } catch (e) {
+          data = { value: dataStr };
+        }
+      }
+      
+      // Simulate worker publishing event
+      if (bridge && bridge.worker) {
+        bridge.worker.postMessage({
+          type: 'bridge-message',
+          event: event,
+          data: { ...data, source: 'worker', timestamp: Date.now() }
+        });
+        logMessage('out', event, data, 'worker');
+        showToast(`Simulated worker event "${event}"`, 'success');
+      }
+    });
+
+    // Worker: Add forward event
+    document.getElementById('btn-add-worker-forward').addEventListener('click', () => {
+      const event = document.getElementById('worker-forward-event').value.trim();
+      if (event) {
+        workerForwardEvents.add(event);
+        updateWorkerForwardList();
+        document.getElementById('worker-forward-event').value = '';
+        showToast(`Worker will forward "${event}" to main`, 'success');
+        
+        // Restart bridge to apply changes
+        if (isRunning) {
+          toggleBridge().then(() => toggleBridge());
+        }
+      }
+    });
+
+    function updateWorkerForwardList() {
+      const list = document.getElementById('worker-forward-list');
+      if (workerForwardEvents.size === 0) {
+        list.innerHTML = '<span class="text-sm text-gray-500">No events configured to forward</span>';
+      } else {
+        list.innerHTML = Array.from(workerForwardEvents).map(event => `
+          <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+            ${event}
+            <button onclick="removeWorkerForward('${event}')" class="ml-1 text-green-600 hover:text-green-900">×</button>
+          </span>
+        `).join('');
+      }
+    }
+
+    window.removeWorkerForward = function(event) {
+      workerForwardEvents.delete(event);
+      updateWorkerForwardList();
+    };
+
+    // Demo Scenarios
+    document.getElementById('scenario-1').addEventListener('click', () => {
+      // Echo Test
+      document.getElementById('main-forward-event').value = 'echo:test';
+      document.getElementById('btn-add-main-forward').click();
+      
+      setTimeout(() => {
+        document.getElementById('main-event-name').value = 'echo:test';
+        document.getElementById('main-event-data').value = JSON.stringify({ message: 'Hello Worker!' });
+        document.getElementById('btn-main-publish').click();
+      }, 100);
+    });
+
+    document.getElementById('scenario-2').addEventListener('click', () => {
+      // Computation
+      document.getElementById('main-forward-event').value = 'compute:task';
+      document.getElementById('btn-add-main-forward').click();
+      
+      setTimeout(() => {
+        document.getElementById('main-event-name').value = 'compute:task';
+        document.getElementById('main-event-data').value = JSON.stringify({ 
+          operation: 'multiply',
+          values: [10, 20, 30]
+        });
+        document.getElementById('btn-main-publish').click();
+      }, 100);
+    });
+
+    document.getElementById('scenario-3').addEventListener('click', () => {
+      // Multi-Event
+      const events = ['event:a', 'event:b', 'event:c'];
+      events.forEach((evt, i) => {
+        setTimeout(() => {
+          document.getElementById('main-event-name').value = evt;
+          document.getElementById('main-event-data').value = JSON.stringify({ index: i, time: Date.now() });
+          document.getElementById('btn-main-publish').click();
+        }, i * 200);
+      });
+    });
+
+    // Initialize UI
+    updateMainForwardList();
+    updateMainReceiveList();
+    updateWorkerForwardList();
+    updateMainSubscriptions();
+  </script>
+</body>
+</html>

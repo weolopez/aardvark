@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - IndexedDB Provider Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .slide-in { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .json-syntax { font-family: 'Monaco', 'Menlo', 'Consolas', monospace; }
+    .tab-active { border-bottom: 2px solid #3b82f6; color: #2563eb; }
+    .store-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .data-row:hover { background-color: #f9fafb; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <div class="flex justify-between items-start">
+        <div>
+          <h1 class="text-4xl font-bold text-gray-800 mb-2">IndexedDB Provider</h1>
+          <p class="text-gray-600">Comprehensive data storage demonstration with schema support, indexing, and real-time subscriptions</p>
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-reset-db" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm font-medium">
+            Reset Database
+          </button>
+          <button id="btn-seed-data" class="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition text-sm font-medium">
+            Seed Sample Data
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Navigation Tabs -->
+    <div class="bg-white rounded-t-lg shadow-sm border-b">
+      <nav class="flex" id="main-tabs">
+        <button class="tab-btn px-6 py-4 text-sm font-medium text-gray-600 hover:text-gray-800 tab-active" data-tab="stores">
+          📦 Stores & Schema
+        </button>
+        <button class="tab-btn px-6 py-4 text-sm font-medium text-gray-600 hover:text-gray-800" data-tab="data">
+          📝 Data Management
+        </button>
+        <button class="tab-btn px-6 py-4 text-sm font-medium text-gray-600 hover:text-gray-800" data-tab="query">
+          🔍 Query & Index
+        </button>
+        <button class="tab-btn px-6 py-4 text-sm font-medium text-gray-600 hover:text-gray-800" data-tab="subscriptions">
+          📡 Subscriptions
+        </button>
+        <button class="tab-btn px-6 py-4 text-sm font-medium text-gray-600 hover:text-gray-800" data-tab="import-export">
+          🔄 Import/Export
+        </button>
+      </nav>
+    </div>
+
+    <!-- Tab Content Container -->
+    <div class="bg-white rounded-b-lg shadow-md min-h-[600px]">
+      
+      <!-- STORES & SCHEMA TAB -->
+      <div id="tab-stores" class="tab-content p-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Store List -->
+          <div class="lg:col-span-1">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Available Stores</h2>
+            <div id="stores-list" class="space-y-3">
+              <div class="text-gray-400 text-center py-8">Loading stores...</div>
+            </div>
+          </div>
+          
+          <!-- Schema Details -->
+          <div class="lg:col-span-2">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Schema Details</h2>
+            <div id="schema-details" class="bg-gray-50 rounded-lg p-6">
+              <div class="text-gray-500 text-center py-8">
+                Select a store to view its schema
+              </div>
+            </div>
+            
+            <!-- Database Statistics -->
+            <div class="mt-6">
+              <h3 class="text-lg font-semibold text-gray-800 mb-3">Database Statistics</h3>
+              <div id="db-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <!-- Stats will be populated here -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DATA MANAGEMENT TAB -->
+      <div id="tab-data" class="tab-content p-6 hidden">
+        <div class="flex flex-wrap gap-4 mb-6">
+          <select id="data-store-select" class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Select a store...</option>
+          </select>
+          <button id="btn-refresh-data" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            Refresh
+          </button>
+          <button id="btn-add-record" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+            + Add Record
+          </button>
+          <button id="btn-clear-store" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
+            Clear Store
+          </button>
+        </div>
+
+        <!-- Data Table -->
+        <div class="overflow-x-auto border rounded-lg">
+          <table class="w-full">
+            <thead class="bg-gray-50 border-b">
+              <tr>
+                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-48">Key</th>
+                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Value (JSON)</th>
+                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700 w-32">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="data-table-body">
+              <tr>
+                <td colspan="3" class="px-4 py-8 text-center text-gray-400">
+                  Select a store to view data
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination / Count -->
+        <div class="mt-4 flex justify-between items-center text-sm text-gray-600">
+          <span id="data-count">0 records</span>
+          <span id="data-store-info"></span>
+        </div>
+      </div>
+
+      <!-- QUERY & INDEX TAB -->
+      <div id="tab-query" class="tab-content p-6 hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Query Builder -->
+          <div class="lg:col-span-1 space-y-4">
+            <h2 class="text-xl font-semibold text-gray-800">Query Builder</h2>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Store</label>
+              <select id="query-store-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Select store...</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Index</label>
+              <select id="query-index-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled>
+                <option value="">Select index...</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Query Type</label>
+              <select id="query-type" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="only">Only (exact match)</option>
+                <option value="lowerBound">Lower Bound (>=)</option>
+                <option value="upperBound">Upper Bound (<=)</option>
+                <option value="bound">Range (between)</option>
+              </select>
+            </div>
+            
+            <div id="query-value-container">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Value</label>
+              <input type="text" id="query-value" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter value...">
+            </div>
+            
+            <div id="query-value-upper-container" class="hidden">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Upper Bound</label>
+              <input type="text" id="query-value-upper" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter upper bound...">
+            </div>
+            
+            <button id="btn-execute-query" class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+              Execute Query
+            </button>
+          </div>
+          
+          <!-- Query Results -->
+          <div class="lg:col-span-2">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Query Results</h2>
+            <div id="query-results" class="bg-gray-50 rounded-lg p-4 min-h-[400px] overflow-auto">
+              <div class="text-gray-400 text-center py-8">
+                Build a query and click Execute to see results
+              </div>
+            </div>
+            <div id="query-stats" class="mt-2 text-sm text-gray-600"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBSCRIPTIONS TAB -->
+      <div id="tab-subscriptions" class="tab-content p-6 hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Subscription Manager -->
+          <div>
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Create Subscription</h2>
+            
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+              <div class="flex gap-2 mb-4">
+                <button id="sub-type-store" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg">Store-wide</button>
+                <button id="sub-type-key" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg">Key-specific</button>
+              </div>
+              
+              <div id="store-sub-form">
+                <div class="mb-3">
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Store</label>
+                  <select id="sub-store-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="">Select store...</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div id="key-sub-form" class="hidden">
+                <div class="mb-3">
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Store</label>
+                  <select id="sub-key-store-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="">Select store...</option>
+                  </select>
+                </div>
+                <div class="mb-3">
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Key</label>
+                  <input type="text" id="sub-key-input" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Enter key to watch...">
+                </div>
+              </div>
+              
+              <button id="btn-create-sub" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
+                Create Subscription
+              </button>
+            </div>
+            
+            <!-- Active Subscriptions -->
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Active Subscriptions</h3>
+            <div id="active-subscriptions" class="space-y-2">
+              <div class="text-gray-400 text-center py-4">No active subscriptions</div>
+            </div>
+          </div>
+          
+          <!-- Live Events Log -->
+          <div>
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-xl font-semibold text-gray-800">Live Events</h2>
+              <button id="btn-clear-events" class="text-sm text-gray-600 hover:text-gray-800">Clear</button>
+            </div>
+            <div id="events-log" class="bg-gray-900 rounded-lg p-4 h-[500px] overflow-y-auto font-mono text-sm">
+              <div class="text-gray-500 italic">Events will appear here when data changes...</div>
+            </div>
+            <div class="mt-2 text-sm text-gray-600">
+              Total events: <span id="event-count">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- IMPORT/EXPORT TAB -->
+      <div id="tab-import-export" class="tab-content p-6 hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Export Section -->
+          <div class="bg-green-50 rounded-lg p-6">
+            <h2 class="text-xl font-semibold text-green-800 mb-4">Export Data</h2>
+            <p class="text-green-700 mb-4">Export all data from IndexedDB to JSON format.</p>
+            
+            <div class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium text-green-800 mb-1">Select Store (optional)</label>
+                <select id="export-store-select" class="w-full px-3 py-2 border border-green-300 rounded-lg bg-white">
+                  <option value="">All Stores</option>
+                </select>
+              </div>
+              
+              <button id="btn-export" class="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">
+                📥 Export to JSON
+              </button>
+            </div>
+            
+            <div id="export-preview" class="mt-4 hidden">
+              <label class="block text-sm font-medium text-green-800 mb-1">Preview</label>
+              <textarea id="export-json" class="w-full h-48 px-3 py-2 border border-green-300 rounded-lg bg-white font-mono text-xs" readonly></textarea>
+            </div>
+          </div>
+          
+          <!-- Import Section -->
+          <div class="bg-blue-50 rounded-lg p-6">
+            <h2 class="text-xl font-semibold text-blue-800 mb-4">Import Data</h2>
+            <p class="text-blue-700 mb-4">Import JSON data into IndexedDB. Existing data will be merged.</p>
+            
+            <div class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium text-blue-800 mb-1">JSON Data</label>
+                <textarea id="import-json" class="w-full h-48 px-3 py-2 border border-blue-300 rounded-lg bg-white font-mono text-xs" placeholder='{
+  "storeName": {
+    "key1": { "field": "value" },
+    "key2": { "field": "value" }
+  }
+}'></textarea>
+              </div>
+              
+              <div class="flex items-center gap-2">
+                <input type="checkbox" id="import-clear" class="w-4 h-4 text-blue-600">
+                <label for="import-clear" class="text-sm text-blue-800">Clear stores before importing</label>
+              </div>
+              
+              <button id="btn-import" class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
+                📤 Import from JSON
+              </button>
+            </div>
+            
+            <div id="import-result" class="mt-4 hidden">
+              <div class="p-3 rounded-lg" id="import-result-box"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Add/Edit Record Modal -->
+    <div id="record-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+        <h3 id="modal-title" class="text-xl font-semibold mb-4">Add Record</h3>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Store</label>
+          <select id="modal-store" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Key</label>
+          <input type="text" id="modal-key" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" placeholder="unique-key">
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Value (JSON)
+            <button id="btn-format-json" class="ml-2 text-xs text-blue-600 hover:text-blue-800">Format</button>
+          </label>
+          <textarea id="modal-value" rows="12" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm" placeholder='{
+  "field": "value",
+  "number": 123,
+  "nested": {
+    "key": "value"
+  }
+}'></textarea>
+        </div>
+        
+        <div id="modal-error" class="mb-4 p-3 bg-red-50 text-red-700 rounded-lg hidden"></div>
+        
+        <div class="flex justify-end gap-3">
+          <button id="modal-cancel" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
+          <button id="modal-save" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save Record</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+  </div>
+
+  <script type="module">
+    import { IndexedDBProvider, AardvarkSchema } from '../../../../components/core/indexeddb-provider/src/index.js';
+
+    // State
+    const db = new IndexedDBProvider('aardvark-demo-comprehensive', 1);
+    let stores = [];
+    let currentStore = null;
+    let subscriptions = new Map();
+    let subIdCounter = 0;
+    let eventCounter = 0;
+    let isKeySubMode = false;
+
+    // DOM Elements - Tabs
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    // DOM Elements - Stores
+    const storesList = document.getElementById('stores-list');
+    const schemaDetails = document.getElementById('schema-details');
+    const dbStats = document.getElementById('db-stats');
+
+    // DOM Elements - Data
+    const dataStoreSelect = document.getElementById('data-store-select');
+    const dataTableBody = document.getElementById('data-table-body');
+    const dataCount = document.getElementById('data-count');
+
+    // DOM Elements - Query
+    const queryStoreSelect = document.getElementById('query-store-select');
+    const queryIndexSelect = document.getElementById('query-index-select');
+    const queryType = document.getElementById('query-type');
+    const queryValue = document.getElementById('query-value');
+    const queryValueUpper = document.getElementById('query-value-upper');
+    const queryValueUpperContainer = document.getElementById('query-value-upper-container');
+
+    // DOM Elements - Subscriptions
+    const subStoreSelect = document.getElementById('sub-store-select');
+    const subKeyStoreSelect = document.getElementById('sub-key-store-select');
+    const activeSubscriptions = document.getElementById('active-subscriptions');
+    const eventsLog = document.getElementById('events-log');
+
+    // DOM Elements - Import/Export
+    const exportStoreSelect = document.getElementById('export-store-select');
+    const importJson = document.getElementById('import-json');
+
+    // Sample data for seeding
+    const sampleData = {
+      sessions: {
+        'session-1': { sessionId: 'session-1', name: 'Project Alpha', created: Date.now() - 86400000, modified: Date.now() },
+        'session-2': { sessionId: 'session-2', name: 'Bug Fixes', created: Date.now() - 43200000, modified: Date.now() - 3600000 },
+        'session-3': { sessionId: 'session-3', name: 'Feature Development', created: Date.now(), modified: Date.now() }
+      },
+      settings: {
+        'theme': { key: 'theme', value: 'dark' },
+        'apiKey': { key: 'apiKey', value: 'sk-demo-12345' },
+        'notifications': { key: 'notifications', value: true }
+      },
+      pending_tools: {
+        'tool-1': { toolId: 'tool-1', type: 'file:read', status: 'pending', created: Date.now() - 300000 },
+        'tool-2': { toolId: 'tool-2', type: 'file:write', status: 'approved', created: Date.now() - 600000 }
+      }
+    };
+
+    // Initialize
+    async function init() {
+      try {
+        await db.initialize(AardvarkSchema);
+        stores = AardvarkSchema;
+        
+        renderStoresList();
+        populateStoreSelects();
+        await updateDBStats();
+        
+        // Auto-seed data if database is empty
+        let totalRecords = 0;
+        for (const store of stores) {
+          try {
+            const keys = await db.getAllKeys(store.name);
+            totalRecords += keys.length;
+          } catch (e) {
+            // Store might not exist yet
+          }
+        }
+        
+        if (totalRecords === 0) {
+          console.log('Database empty, seeding sample data...');
+          let count = 0;
+          for (const [storeName, records] of Object.entries(sampleData)) {
+            for (const [key, value] of Object.entries(records)) {
+              try {
+                await db.set(storeName, key, value);
+                count++;
+              } catch (e) {
+                console.error(`Failed to seed ${storeName}.${key}:`, e);
+              }
+            }
+          }
+          await updateDBStats();
+          showToast(`Database initialized with ${count} sample records`, 'success');
+        } else {
+          showToast(`Database initialized with ${totalRecords} existing records`, 'success');
+        }
+      } catch (error) {
+        console.error('Failed to initialize:', error);
+        showToast('Failed to initialize: ' + error.message, 'error');
+      }
+    }
+
+    // Toast notifications
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500'
+      };
+      
+      toast.className = `${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg fade-in flex items-center gap-2`;
+      toast.innerHTML = `
+        <span>${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span>
+        <span>${message}</span>
+      `;
+      
+      document.getElementById('toast-container').appendChild(toast);
+      
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
+    // Tab switching
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.dataset.tab;
+        
+        // Update buttons
+        tabButtons.forEach(b => b.classList.remove('tab-active'));
+        btn.classList.add('tab-active');
+        
+        // Update content
+        tabContents.forEach(c => c.classList.add('hidden'));
+        document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      });
+    });
+
+    // ===== STORES & SCHEMA TAB =====
+    
+    function renderStoresList() {
+      storesList.innerHTML = stores.map((store, index) => `
+        <div class="store-card bg-white border rounded-lg p-4 cursor-pointer transition-all ${index === 0 ? 'border-blue-500 bg-blue-50' : ''}" 
+             data-store="${store.name}" onclick="window.selectStoreForSchema('${store.name}')">
+          <div class="flex justify-between items-center">
+            <div>
+              <div class="font-semibold text-gray-800">${store.name}</div>
+              <div class="text-sm text-gray-500">${store.indexes ? store.indexes.length : 0} indexes</div>
+            </div>
+            <span class="text-xs px-2 py-1 rounded ${store.keyPath ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}">
+              ${store.keyPath ? `keyPath: ${store.keyPath}` : 'no keyPath'}
+            </span>
+          </div>
+        </div>
+      `).join('');
+      
+      // Select first store by default
+      if (stores.length > 0) {
+        selectStoreForSchema(stores[0].name);
+      }
+    }
+
+    window.selectStoreForSchema = function(storeName) {
+      // Update visual selection
+      storesList.querySelectorAll('.store-card').forEach(card => {
+        if (card.dataset.store === storeName) {
+          card.classList.add('border-blue-500', 'bg-blue-50');
+        } else {
+          card.classList.remove('border-blue-500', 'bg-blue-50');
+        }
+      });
+      
+      const store = stores.find(s => s.name === storeName);
+      if (!store) return;
+      
+      // Render schema details
+      schemaDetails.innerHTML = `
+        <div class="space-y-4">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">${store.name}</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span class="text-gray-600">Key Path:</span>
+                <span class="font-mono bg-gray-200 px-2 py-1 rounded ml-2">${store.keyPath || 'none'}</span>
+              </div>
+              <div>
+                <span class="text-gray-600">Auto Increment:</span>
+                <span class="font-mono bg-gray-200 px-2 py-1 rounded ml-2">${store.autoIncrement ? 'Yes' : 'No'}</span>
+              </div>
+            </div>
+          </div>
+          
+          ${store.indexes ? `
+            <div>
+              <h4 class="font-semibold text-gray-700 mb-2">Indexes</h4>
+              <div class="space-y-2">
+                ${store.indexes.map(idx => `
+                  <div class="flex items-center gap-4 p-2 bg-white rounded border">
+                    <span class="font-medium text-blue-700">${idx.name}</span>
+                    <span class="text-sm text-gray-600">keyPath: ${idx.keyPath}</span>
+                    <span class="text-xs px-2 py-1 rounded ${idx.unique ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">
+                      ${idx.unique ? 'Unique' : 'Non-unique'}
+                    </span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : '<div class="text-gray-500">No indexes defined</div>'}
+        </div>
+      `;
+    };
+
+    async function updateDBStats() {
+      const stats = [];
+      
+      for (const store of stores) {
+        try {
+          const keys = await db.getAllKeys(store.name);
+          stats.push({
+            name: store.name,
+            count: keys.length
+          });
+        } catch (e) {
+          stats.push({ name: store.name, count: 0 });
+        }
+      }
+      
+      const total = stats.reduce((sum, s) => sum + s.count, 0);
+      
+      dbStats.innerHTML = `
+        <div class="bg-blue-50 rounded-lg p-4 text-center">
+          <div class="text-2xl font-bold text-blue-600">${stores.length}</div>
+          <div class="text-sm text-gray-600">Total Stores</div>
+        </div>
+        <div class="bg-green-50 rounded-lg p-4 text-center">
+          <div class="text-2xl font-bold text-green-600">${total}</div>
+          <div class="text-sm text-gray-600">Total Records</div>
+        </div>
+        ${stats.map(s => `
+          <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-gray-700">${s.count}</div>
+            <div class="text-sm text-gray-600">${s.name}</div>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    // ===== DATA MANAGEMENT TAB =====
+
+    function populateStoreSelects() {
+      const options = stores.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+      
+      dataStoreSelect.innerHTML = '<option value="">Select a store...</option>' + options;
+      queryStoreSelect.innerHTML = '<option value="">Select store...</option>' + options;
+      subStoreSelect.innerHTML = '<option value="">Select store...</option>' + options;
+      subKeyStoreSelect.innerHTML = '<option value="">Select store...</option>' + options;
+      exportStoreSelect.innerHTML = '<option value="">All Stores</option>' + options;
+      
+      // Populate modal store select
+      document.getElementById('modal-store').innerHTML = options;
+    }
+
+    dataStoreSelect.addEventListener('change', async (e) => {
+      currentStore = e.target.value;
+      if (currentStore) {
+        await loadStoreData(currentStore);
+      } else {
+        dataTableBody.innerHTML = `
+          <tr>
+            <td colspan="3" class="px-4 py-8 text-center text-gray-400">
+              Select a store to view data
+            </td>
+          </tr>
+        `;
+        dataCount.textContent = '0 records';
+      }
+    });
+
+    async function loadStoreData(storeName) {
+      try {
+        const keys = await db.getAllKeys(storeName);
+        const data = await db.getAll(storeName);
+        
+        dataCount.textContent = `${keys.length} record${keys.length !== 1 ? 's' : ''}`;
+        
+        if (keys.length === 0) {
+          dataTableBody.innerHTML = `
+            <tr>
+              <td colspan="3" class="px-4 py-8 text-center text-gray-400">
+                Store is empty
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        dataTableBody.innerHTML = keys.map((key, index) => {
+          const value = data[index];
+          const valueStr = JSON.stringify(value, null, 2);
+          const preview = valueStr.substring(0, 150) + (valueStr.length > 150 ? '...' : '');
+          
+          return `
+            <tr class="data-row border-b transition-colors">
+              <td class="px-4 py-3 align-top">
+                <code class="text-sm bg-gray-100 px-2 py-1 rounded">${key}</code>
+              </td>
+              <td class="px-4 py-3">
+                <pre class="text-xs text-gray-600 whitespace-pre-wrap font-mono">${preview}</pre>
+              </td>
+              <td class="px-4 py-3 align-top">
+                <div class="flex gap-2">
+                  <button onclick="window.editRecord('${storeName}', '${key}')" 
+                    class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                  <button onclick="window.deleteRecord('${storeName}', '${key}')" 
+                    class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (error) {
+        dataTableBody.innerHTML = `
+          <tr>
+            <td colspan="3" class="px-4 py-8 text-center text-red-600">
+              Error: ${error.message}
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    document.getElementById('btn-refresh-data').addEventListener('click', () => {
+      if (currentStore) loadStoreData(currentStore);
+    });
+
+    document.getElementById('btn-clear-store').addEventListener('click', async () => {
+      if (!currentStore) {
+        showToast('Please select a store first', 'error');
+        return;
+      }
+      
+      if (!confirm(`Clear all data from "${currentStore}"? This cannot be undone.`)) {
+        return;
+      }
+      
+      try {
+        await db.clear(currentStore);
+        await loadStoreData(currentStore);
+        await updateDBStats();
+        showToast(`Store "${currentStore}" cleared`, 'success');
+      } catch (error) {
+        showToast('Error clearing store: ' + error.message, 'error');
+      }
+    });
+
+    // Modal functions
+    const recordModal = document.getElementById('record-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalStore = document.getElementById('modal-store');
+    const modalKey = document.getElementById('modal-key');
+    const modalValue = document.getElementById('modal-value');
+    const modalError = document.getElementById('modal-error');
+
+    function showRecordModal(store = '', key = '', value = '') {
+      modalStore.value = store || currentStore || '';
+      modalKey.value = key;
+      modalValue.value = value;
+      modalKey.disabled = !!key;
+      modalTitle.textContent = key ? 'Edit Record' : 'Add Record';
+      modalError.classList.add('hidden');
+      recordModal.classList.remove('hidden');
+    }
+
+    function hideRecordModal() {
+      recordModal.classList.add('hidden');
+    }
+
+    document.getElementById('btn-add-record').addEventListener('click', () => {
+      showRecordModal();
+    });
+
+    document.getElementById('modal-cancel').addEventListener('click', hideRecordModal);
+
+    document.getElementById('btn-format-json').addEventListener('click', () => {
+      try {
+        const parsed = JSON.parse(modalValue.value);
+        modalValue.value = JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        showToast('Invalid JSON: ' + e.message, 'error');
+      }
+    });
+
+    document.getElementById('modal-save').addEventListener('click', async () => {
+      const store = modalStore.value;
+      const key = modalKey.value.trim();
+      const valueStr = modalValue.value.trim();
+      
+      if (!store) {
+        modalError.textContent = 'Please select a store';
+        modalError.classList.remove('hidden');
+        return;
+      }
+      
+      if (!key) {
+        modalError.textContent = 'Please enter a key';
+        modalError.classList.remove('hidden');
+        return;
+      }
+      
+      try {
+        let value = null;
+        if (valueStr) {
+          value = JSON.parse(valueStr);
+        }
+        
+        await db.set(store, key, value);
+        hideRecordModal();
+        
+        // Refresh data view if viewing the same store
+        if (currentStore === store) {
+          await loadStoreData(store);
+        }
+        
+        await updateDBStats();
+        showToast('Record saved successfully', 'success');
+      } catch (error) {
+        modalError.textContent = 'Error: ' + error.message;
+        modalError.classList.remove('hidden');
+      }
+    });
+
+    window.editRecord = async function(store, key) {
+      try {
+        const value = await db.get(store, key);
+        showRecordModal(store, key, JSON.stringify(value, null, 2));
+      } catch (error) {
+        showToast('Error loading record: ' + error.message, 'error');
+      }
+    };
+
+    window.deleteRecord = async function(store, key) {
+      if (!confirm(`Delete record "${key}" from "${store}"?`)) {
+        return;
+      }
+      
+      try {
+        await db.delete(store, key);
+        
+        if (currentStore === store) {
+          await loadStoreData(store);
+        }
+        
+        await updateDBStats();
+        showToast('Record deleted', 'success');
+      } catch (error) {
+        showToast('Error deleting record: ' + error.message, 'error');
+      }
+    };
+
+    // ===== QUERY & INDEX TAB =====
+
+    queryStoreSelect.addEventListener('change', (e) => {
+      const storeName = e.target.value;
+      const store = stores.find(s => s.name === storeName);
+      
+      if (store && store.indexes) {
+        queryIndexSelect.innerHTML = '<option value="">Select index...</option>' + 
+          store.indexes.map(i => `<option value="${i.name}">${i.name} (${i.keyPath})</option>`).join('');
+        queryIndexSelect.disabled = false;
+      } else {
+        queryIndexSelect.innerHTML = '<option value="">No indexes available</option>';
+        queryIndexSelect.disabled = true;
+      }
+    });
+
+    queryType.addEventListener('change', (e) => {
+      if (e.target.value === 'bound') {
+        queryValueUpperContainer.classList.remove('hidden');
+      } else {
+        queryValueUpperContainer.classList.add('hidden');
+      }
+    });
+
+    document.getElementById('btn-execute-query').addEventListener('click', async () => {
+      const store = queryStoreSelect.value;
+      const index = queryIndexSelect.value;
+      const type = queryType.value;
+      const value = queryValue.value;
+      const upperValue = queryValueUpper.value;
+      
+      if (!store || !index) {
+        showToast('Please select store and index', 'error');
+        return;
+      }
+      
+      if (!value && type !== 'lowerBound') {
+        showToast('Please enter a query value', 'error');
+        return;
+      }
+      
+      try {
+        let keyRange;
+        
+        // Try to parse as number if possible
+        const parseValue = (v) => {
+          const num = Number(v);
+          return isNaN(num) ? v : num;
+        };
+        
+        switch (type) {
+          case 'only':
+            keyRange = IDBKeyRange.only(parseValue(value));
+            break;
+          case 'lowerBound':
+            keyRange = IDBKeyRange.lowerBound(parseValue(value));
+            break;
+          case 'upperBound':
+            keyRange = IDBKeyRange.upperBound(parseValue(value));
+            break;
+          case 'bound':
+            keyRange = IDBKeyRange.bound(parseValue(value), parseValue(upperValue));
+            break;
+        }
+        
+        const results = await db.query(store, index, keyRange);
+        
+        const queryResults = document.getElementById('query-results');
+        const queryStats = document.getElementById('query-stats');
+        
+        queryStats.textContent = `Found ${results.length} result${results.length !== 1 ? 's' : ''}`;
+        
+        if (results.length === 0) {
+          queryResults.innerHTML = '<div class="text-gray-400 text-center py-8">No results found</div>';
+        } else {
+          queryResults.innerHTML = results.map((item, i) => `
+            <div class="mb-4 p-3 bg-white rounded border slide-in" style="animation-delay: ${i * 50}ms">
+              <div class="text-xs text-gray-500 mb-1">Result ${i + 1}</div>
+              <pre class="text-sm font-mono whitespace-pre-wrap">${JSON.stringify(item, null, 2)}</pre>
+            </div>
+          `).join('');
+        }
+        
+        showToast('Query executed successfully', 'success');
+      } catch (error) {
+        showToast('Query error: ' + error.message, 'error');
+      }
+    });
+
+    // ===== SUBSCRIPTIONS TAB =====
+
+    document.getElementById('sub-type-store').addEventListener('click', () => {
+      isKeySubMode = false;
+      document.getElementById('sub-type-store').classList.add('bg-blue-600', 'text-white');
+      document.getElementById('sub-type-store').classList.remove('bg-gray-200', 'text-gray-700');
+      document.getElementById('sub-type-key').classList.remove('bg-blue-600', 'text-white');
+      document.getElementById('sub-type-key').classList.add('bg-gray-200', 'text-gray-700');
+      document.getElementById('store-sub-form').classList.remove('hidden');
+      document.getElementById('key-sub-form').classList.add('hidden');
+    });
+
+    document.getElementById('sub-type-key').addEventListener('click', () => {
+      isKeySubMode = true;
+      document.getElementById('sub-type-key').classList.add('bg-blue-600', 'text-white');
+      document.getElementById('sub-type-key').classList.remove('bg-gray-200', 'text-gray-700');
+      document.getElementById('sub-type-store').classList.remove('bg-blue-600', 'text-white');
+      document.getElementById('sub-type-store').classList.add('bg-gray-200', 'text-gray-700');
+      document.getElementById('key-sub-form').classList.remove('hidden');
+      document.getElementById('store-sub-form').classList.add('hidden');
+    });
+
+    document.getElementById('btn-create-sub').addEventListener('click', () => {
+      let store, key, unsubscribe;
+      
+      if (isKeySubMode) {
+        store = subKeyStoreSelect.value;
+        key = document.getElementById('sub-key-input').value.trim();
+        
+        if (!store || !key) {
+          showToast('Please select store and enter key', 'error');
+          return;
+        }
+        
+        unsubscribe = db.subscribeKey(store, key, (value) => {
+          logEvent('key-change', { store, key, value });
+        });
+      } else {
+        store = subStoreSelect.value;
+        
+        if (!store) {
+          showToast('Please select a store', 'error');
+          return;
+        }
+        
+        unsubscribe = db.subscribe(store, (change) => {
+          logEvent('store-change', change);
+        });
+      }
+      
+      const id = ++subIdCounter;
+      subscriptions.set(id, { 
+        id, 
+        store, 
+        key, 
+        type: isKeySubMode ? 'key' : 'store',
+        unsubscribe 
+      });
+      
+      renderSubscriptions();
+      showToast('Subscription created', 'success');
+    });
+
+    function renderSubscriptions() {
+      if (subscriptions.size === 0) {
+        activeSubscriptions.innerHTML = '<div class="text-gray-400 text-center py-4">No active subscriptions</div>';
+        return;
+      }
+      
+      activeSubscriptions.innerHTML = Array.from(subscriptions.values()).map(sub => `
+        <div class="flex justify-between items-center bg-blue-50 p-3 rounded-lg slide-in">
+          <div>
+            <span class="font-medium text-blue-900">${sub.store}</span>
+            ${sub.key ? `<span class="text-blue-700">::${sub.key}</span>` : ''}
+            <span class="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded ml-2">${sub.type}</span>
+          </div>
+          <button onclick="window.removeSubscription(${sub.id})" class="text-red-600 hover:text-red-800 text-sm">
+            Remove
+          </button>
+        </div>
+      `).join('');
+    }
+
+    window.removeSubscription = function(id) {
+      const sub = subscriptions.get(id);
+      if (sub) {
+        sub.unsubscribe();
+        subscriptions.delete(id);
+        renderSubscriptions();
+        showToast('Subscription removed', 'info');
+      }
+    };
+
+    function logEvent(type, data) {
+      eventCounter++;
+      document.getElementById('event-count').textContent = eventCounter;
+      
+      // Remove empty message
+      if (eventsLog.children[0]?.classList.contains('italic')) {
+        eventsLog.innerHTML = '';
+      }
+      
+      const entry = document.createElement('div');
+      entry.className = 'mb-2 p-2 bg-gray-800 rounded fade-in border-l-4 ' + 
+        (type === 'store-change' ? 'border-green-500' : 'border-blue-500');
+      
+      const time = new Date().toLocaleTimeString();
+      const action = data.value === null ? 'deleted' : 'updated';
+      
+      entry.innerHTML = `
+        <div class="flex justify-between text-xs text-gray-400 mb-1">
+          <span>${time}</span>
+          <span class="text-${action === 'deleted' ? 'red' : 'green'}-400">${action}</span>
+        </div>
+        <div class="text-green-300 font-mono text-xs">
+          ${data.store}${data.key ? `::${data.key}` : ''}
+        </div>
+        <pre class="text-gray-300 text-xs mt-1 overflow-hidden">${JSON.stringify(data.value).substring(0, 100)}</pre>
+      `;
+      
+      eventsLog.insertBefore(entry, eventsLog.firstChild);
+      
+      // Keep only last 50 events
+      while (eventsLog.children.length > 50) {
+        eventsLog.removeChild(eventsLog.lastChild);
+      }
+    }
+
+    document.getElementById('btn-clear-events').addEventListener('click', () => {
+      eventsLog.innerHTML = '<div class="text-gray-500 italic">Events will appear here when data changes...</div>';
+      eventCounter = 0;
+      document.getElementById('event-count').textContent = '0';
+    });
+
+    // ===== IMPORT/EXPORT TAB =====
+
+    document.getElementById('btn-export').addEventListener('click', async () => {
+      const selectedStore = exportStoreSelect.value;
+      const exportData = {};
+      
+      try {
+        if (selectedStore) {
+          const keys = await db.getAllKeys(selectedStore);
+          const data = await db.getAll(selectedStore);
+          exportData[selectedStore] = {};
+          keys.forEach((key, i) => {
+            exportData[selectedStore][key] = data[i];
+          });
+        } else {
+          for (const store of stores) {
+            const keys = await db.getAllKeys(store.name);
+            const data = await db.getAll(store.name);
+            exportData[store.name] = {};
+            keys.forEach((key, i) => {
+              exportData[store.name][key] = data[i];
+            });
+          }
+        }
+        
+        const jsonStr = JSON.stringify(exportData, null, 2);
+        
+        // Show preview
+        document.getElementById('export-preview').classList.remove('hidden');
+        document.getElementById('export-json').value = jsonStr;
+        
+        // Download file
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `aardvark-export-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        showToast('Data exported successfully', 'success');
+      } catch (error) {
+        showToast('Export error: ' + error.message, 'error');
+      }
+    });
+
+    document.getElementById('btn-import').addEventListener('click', async () => {
+      const jsonStr = importJson.value.trim();
+      
+      if (!jsonStr) {
+        showToast('Please enter JSON data', 'error');
+        return;
+      }
+      
+      try {
+        const data = JSON.parse(jsonStr);
+        const clearBeforeImport = document.getElementById('import-clear').checked;
+        
+        let importedCount = 0;
+        
+        for (const [storeName, records] of Object.entries(data)) {
+          // Verify store exists
+          if (!stores.find(s => s.name === storeName)) {
+            console.warn(`Store "${storeName}" not found in schema, skipping`);
+            continue;
+          }
+          
+          // Clear if requested
+          if (clearBeforeImport) {
+            await db.clear(storeName);
+          }
+          
+          // Import records
+          for (const [key, value] of Object.entries(records)) {
+            await db.set(storeName, key, value);
+            importedCount++;
+          }
+        }
+        
+        // Show result
+        const resultBox = document.getElementById('import-result-box');
+        resultBox.className = 'p-3 rounded-lg bg-green-100 text-green-800';
+        resultBox.innerHTML = `✓ Successfully imported ${importedCount} records`;
+        document.getElementById('import-result').classList.remove('hidden');
+        
+        // Refresh UI
+        await updateDBStats();
+        if (currentStore) {
+          await loadStoreData(currentStore);
+        }
+        
+        showToast(`Imported ${importedCount} records`, 'success');
+      } catch (error) {
+        const resultBox = document.getElementById('import-result-box');
+        resultBox.className = 'p-3 rounded-lg bg-red-100 text-red-800';
+        resultBox.innerHTML = `✗ Import failed: ${error.message}`;
+        document.getElementById('import-result').classList.remove('hidden');
+        
+        showToast('Import error: ' + error.message, 'error');
+      }
+    });
+
+    // ===== SEED DATA & RESET =====
+
+    document.getElementById('btn-seed-data').addEventListener('click', async () => {
+      try {
+        let count = 0;
+        for (const [store, records] of Object.entries(sampleData)) {
+          for (const [key, value] of Object.entries(records)) {
+            await db.set(store, key, value);
+            count++;
+          }
+        }
+        
+        await updateDBStats();
+        if (currentStore) {
+          await loadStoreData(currentStore);
+        }
+        
+        showToast(`Seeded ${count} sample records`, 'success');
+      } catch (error) {
+        showToast('Error seeding data: ' + error.message, 'error');
+      }
+    });
+
+    document.getElementById('btn-reset-db').addEventListener('click', async () => {
+      if (!confirm('Reset entire database? All data will be lost!')) {
+        return;
+      }
+      
+      try {
+        db.close();
+        
+        // Delete database
+        const deleteRequest = indexedDB.deleteDatabase('aardvark-demo-comprehensive');
+        await new Promise((resolve, reject) => {
+          deleteRequest.onsuccess = resolve;
+          deleteRequest.onerror = () => reject(deleteRequest.error);
+        });
+        
+        // Reinitialize
+        await init();
+        
+        // Clear UI
+        currentStore = null;
+        dataStoreSelect.value = '';
+        dataTableBody.innerHTML = `
+          <tr>
+            <td colspan="3" class="px-4 py-8 text-center text-gray-400">
+              Select a store to view data
+            </td>
+          </tr>
+        `;
+        dataCount.textContent = '0 records';
+        
+        showToast('Database reset successfully', 'success');
+      } catch (error) {
+        showToast('Error resetting database: ' + error.message, 'error');
+      }
+    });
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>

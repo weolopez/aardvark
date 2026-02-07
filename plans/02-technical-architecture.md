@@ -10,6 +10,7 @@
 
 ### UI Layer
 - **Lit HTML** (Web Components via CDN)
+- **Tailwind CSS** (via CDN for utility classes)
 - **Vanilla JavaScript** (ES2020+)
 - Shadow DOM for style encapsulation
 - Standard Web Platform APIs
@@ -245,12 +246,15 @@ export class ChatUi extends LitElement {
 customElements.define('chat-ui', ChatUi);
 ```
 
-### Usage
+### Usage with Tailwind
 
 ```html
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
   <script type="module">
     import { ChatUi } from './components/chat-ui.js';
     import { EventBus } from './js/event-bus.js';
@@ -267,8 +271,8 @@ customElements.define('chat-ui', ChatUi);
     });
   </script>
 </head>
-<body>
-  <chat-ui></chat-ui>
+<body class="bg-gray-100 h-screen">
+  <chat-ui class="h-full max-w-4xl mx-auto shadow-lg"></chat-ui>
 </body>
 </html>
 ```
@@ -550,71 +554,15 @@ export class OPFS {
 }
 ```
 
-### Pattern 3: UI Components with Lit HTML
+### Pattern 3: UI Components with Lit HTML + Tailwind
 
 ```javascript
 // www/components/chat-ui.js
-import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 
 export class ChatUi extends LitElement {
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    
-    .messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1rem;
-    }
-    
-    .message {
-      margin-bottom: 1rem;
-      padding: 0.75rem;
-      border-radius: 0.5rem;
-    }
-    
-    .message-user {
-      background: #e3f2fd;
-      margin-left: 2rem;
-    }
-    
-    .message-assistant {
-      background: #f5f5f5;
-      margin-right: 2rem;
-    }
-    
-    .input-area {
-      display: flex;
-      padding: 1rem;
-      border-top: 1px solid #ddd;
-    }
-    
-    textarea {
-      flex: 1;
-      padding: 0.5rem;
-      border: 1px solid #ccc;
-      border-radius: 0.25rem;
-      resize: none;
-    }
-    
-    button {
-      margin-left: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: #1976d2;
-      color: white;
-      border: none;
-      border-radius: 0.25rem;
-      cursor: pointer;
-    }
-    
-    button:disabled {
-      background: #ccc;
-    }
-  `;
-
+  // No static styles needed - using Tailwind classes!
+  
   static properties = {
     messages: { type: Array },
     inputText: { type: String },
@@ -630,28 +578,47 @@ export class ChatUi extends LitElement {
 
   render() {
     return html`
-      <div class="messages">
-        ${this.messages.map(msg => html`
-          <div class="message message-${msg.role}">
-            <div class="content">${msg.content}</div>
-          </div>
-        `)}
-      </div>
-      
-      <div class="input-area">
-        <textarea
-          .value="${this.inputText}"
-          @input="${this.handleInput}"
-          @keydown="${this.handleKeydown}"
-          placeholder="Type a message..."
-          ?disabled="${this.isLoading}"
-        ></textarea>
-        <button 
-          @click="${this.send}"
-          ?disabled="${this.isLoading || !this.inputText.trim()}"
-        >
-          ${this.isLoading ? 'Loading...' : 'Send'}
-        </button>
+      <div class="flex flex-col h-full bg-white">
+        <!-- Messages List -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          ${this.messages.map(msg => html`
+            <div class="${msg.role === 'user' 
+              ? 'ml-8 bg-blue-50' 
+              : 'mr-8 bg-gray-50'} 
+              p-3 rounded-lg shadow-sm">
+              <div class="text-sm text-gray-500 mb-1">
+                ${msg.role === 'user' ? 'You' : 'Assistant'}
+              </div>
+              <div class="text-gray-800 whitespace-pre-wrap">${msg.content}</div>
+            </div>
+          `)}
+        </div>
+        
+        <!-- Input Area -->
+        <div class="flex p-4 border-t border-gray-200 bg-white">
+          <textarea
+            class="flex-1 p-3 border border-gray-300 rounded-lg resize-none 
+                   focus:outline-none focus:ring-2 focus:ring-blue-500
+                   disabled:bg-gray-100"
+            .value="${this.inputText}"
+            @input="${this.handleInput}"
+            @keydown="${this.handleKeydown}"
+            placeholder="Type a message..."
+            rows="2"
+            ?disabled="${this.isLoading}"
+          ></textarea>
+          <button 
+            class="ml-3 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium
+                   hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500
+                   disabled:bg-gray-400 disabled:cursor-not-allowed
+                   transition-colors duration-200"
+            @click="${this.send}"
+            ?disabled="${this.isLoading || !this.inputText.trim()}">
+            ${this.isLoading 
+              ? html`<span class="animate-pulse">Loading...</span>` 
+              : 'Send'}
+          </button>
+        </div>
       </div>
     `;
   }
@@ -682,9 +649,10 @@ export class ChatUi extends LitElement {
 
   addMessage(role, content) {
     this.messages = [...this.messages, { role, content }];
+    // Auto-scroll
     this.updateComplete.then(() => {
-      const messages = this.shadowRoot.querySelector('.messages');
-      if (messages) messages.scrollTop = messages.scrollHeight;
+      const container = this.shadowRoot.querySelector('.overflow-y-auto');
+      if (container) container.scrollTop = container.scrollHeight;
     });
   }
 }
@@ -694,99 +662,124 @@ customElements.define('chat-ui', ChatUi);
 
 ---
 
-## Styling Strategy
+## Styling Strategy with Tailwind CSS
 
-### Shadow DOM Scoping (Lit Components)
+### Tailwind via CDN
 
-UI components use **Lit's Shadow DOM** for style encapsulation:
+Tailwind CSS is loaded via CDN and used for all styling:
+
+```html
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Tailwind Configuration -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#1976d2',
+            'user-msg': '#e3f2fd',
+            'assistant-msg': '#f5f5f5',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body>
+  <chat-ui></chat-ui>
+  
+  <script type="module" src="index.js"></script>
+</body>
+</html>
+```
+
+### Using Tailwind with Lit Components
+
+Apply Tailwind classes in Lit templates:
 
 ```javascript
 class ChatUi extends LitElement {
-  static styles = css`
-    /* These styles are scoped to this component only */
-    :host {
-      display: block;
-    }
-    
-    .messages {
-      /* Won't leak to parent or children */
-    }
-    
-    ::slotted(*) {
-      /* Style slotted content */
-    }
-  `;
+  render() {
+    return html`
+      <div class="flex flex-col h-full bg-white">
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          ${this.messages.map(msg => html`
+            <div class="${msg.role === 'user' 
+              ? 'ml-8 bg-user-msg' 
+              : 'mr-8 bg-assistant-msg'} 
+              p-3 rounded-lg shadow-sm">
+              <div class="text-gray-800">${msg.content}</div>
+            </div>
+          `)}
+        </div>
+        
+        <div class="flex p-4 border-t border-gray-200">
+          <textarea 
+            class="flex-1 p-2 border border-gray-300 rounded resize-none 
+                   focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="Type a message..."
+            ?disabled="${this.isLoading}"
+          ></textarea>
+          <button 
+            class="ml-2 px-4 py-2 bg-primary text-white rounded 
+                   hover:bg-blue-700 disabled:bg-gray-400"
+            ?disabled="${this.isLoading}">
+            Send
+          </button>
+        </div>
+      </div>
+    `;
+  }
 }
 ```
 
-### Global CSS (for Layout)
+### Tailwind Benefits
 
-Global styles only for app-level layout:
+- **Utility-first**: Rapid development with predefined classes
+- **CDN loaded**: No build step, no npm, works immediately
+- **Configurable**: Custom colors and themes via config
+- **Responsive**: Built-in responsive modifiers (`md:`, `lg:`)
+- **Dark mode**: Built-in dark mode support
+- **Consistent**: Design system out of the box
 
-```css
-/* www/styles.css */
-
-/* Reset */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-/* App Layout */
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.app {
-  display: grid;
-  grid-template-columns: 250px 1fr;
-  height: 100vh;
-}
-
-.sidebar {
-  background: #f5f5f5;
-  border-right: 1px solid #ddd;
-}
-
-.main {
-  display: flex;
-  flex-direction: column;
-}
-```
-
-### CSS Custom Properties (Theming)
-
-Use CSS variables for theming:
-
-```css
-/* www/styles.css */
-:root {
-  --primary-color: #1976d2;
-  --background-color: #ffffff;
-  --text-color: #333333;
-  --border-color: #dddddd;
-  --message-user-bg: #e3f2fd;
-  --message-assistant-bg: #f5f5f5;
-}
-```
-
-Components reference these variables:
+### Common Patterns
 
 ```javascript
-static styles = css`
-  button {
-    background: var(--primary-color, #1976d2);
-    color: white;
-  }
-  
-  .message-user {
-    background: var(--message-user-bg, #e3f2fd);
-  }
-`;
+// Layout
+html`<div class="flex flex-col h-screen">...</div>`
+
+// Spacing
+html`<div class="p-4 m-2 space-y-4">...</div>`
+
+// Typography
+html`<h1 class="text-2xl font-bold text-gray-800">...</h1>`
+
+// Colors
+html`<button class="bg-blue-500 hover:bg-blue-700 text-white">...</button>`
+
+// Responsive
+html`<div class="w-full md:w-1/2 lg:w-1/3">...</div>`
+
+// State
+html`<input class="focus:ring-2 disabled:opacity-50">`
+
+// Dark mode
+html`<div class="bg-white dark:bg-gray-800">...</div>`
 ```
+
+### Style Encapsulation Note
+
+Since Tailwind uses global utility classes, Shadow DOM encapsulation doesn't hide styles. This is fine because:
+- Tailwind classes are utilities, not component-specific
+- No style conflicts (utilities are atomic)
+- Consistent design system across all components
+- Override via higher specificity or !important if needed
 
 ---
 
@@ -1005,10 +998,14 @@ features = [
 ]
 ```
 
-### JavaScript
-- **Lit HTML**: Loaded from CDN (only UI dependency)
+### JavaScript (via CDN)
+- **Lit HTML**: Web components framework
   ```javascript
-  import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+  import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+  ```
+- **Tailwind CSS**: Utility-first CSS framework
+  ```html
+  <script src="https://cdn.tailwindcss.com"></script>
   ```
 - No npm packages
 - No build step for JavaScript
@@ -1120,14 +1117,17 @@ async function showFileBrowser() {
 **Stack**:
 - Rust → WASM (wasm-bindgen)
 - Vanilla JavaScript (ES2020+)
+- Lit HTML (web components via CDN)
+- Tailwind CSS (utility classes via CDN)
 - OPFS + IndexedDB
 - Native ES Modules
-- No Shadow DOM, no frameworks
+- No build tools, no npm
 
 **Benefits**:
 - No build complexity for JS
 - Type safety in Rust
-- Minimal dependencies
+- Rapid UI development with Tailwind
+- Component encapsulation with Lit
+- Minimal dependencies (2 CDNs)
 - Fast development cycle
 - Easy deployment
-- Long-term maintainability

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - Browser Coding Agent</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Tailwind Configuration -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#1976d2',
+            'user-msg': '#e3f2fd',
+            'assistant-msg': '#f5f5f5',
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    /* Global styles */
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+  <div class="flex h-full max-w-7xl mx-auto bg-white shadow-xl">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
+      <div class="p-4 border-b border-gray-200">
+        <h1 class="text-xl font-bold text-gray-800">Aardvark</h1>
+        <p class="text-sm text-gray-500">Coding Agent</p>
+      </div>
+      
+      <div class="flex-1 overflow-y-auto p-4">
+        <session-tree-ui></session-tree-ui>
+      </div>
+      
+      <div class="p-4 border-t border-gray-200">
+        <button id="export-btn" class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm">
+          Export Session
+        </button>
+      </div>
+    </aside>
+    
+    <!-- Main content -->
+    <main class="flex-1 flex flex-col">
+      <chat-ui class="flex-1"></chat-ui>
+    </main>
+  </div>
+  
+  <!-- Tool Approval Modal (hidden by default) -->
+  <tool-approval-ui id="tool-approval" class="hidden"></tool-approval-ui>
+  
+  <!-- Main JavaScript -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+[package]
+name = "aardvark"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "Browser-based coding agent with Rust/WASM core"
+license = "MIT"
+repository = "https://github.com/weolopez/aardvark"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "console",
+    "Window",
+    "Worker",
+    "WorkerGlobalScope",
+    "MessageEvent",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "ReadableStream",
+] }
+uuid = { version = "1.0", features = ["v4", "js"] }
+chrono = { version = "0.4", features = ["serde"] }
+getrandom = { version = "0.2", features = ["js"] }
+regex = "1.0"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true

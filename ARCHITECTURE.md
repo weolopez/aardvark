@@ -128,6 +128,8 @@ flowchart TB
 | GitHub Loader | JavaScript (Web Worker) | Fetches repositories from GitHub API, writes files and tools to OPFS |
 | WASM Agent | Rust/WASM (Web Worker) | LLM chat loop, session management, tool dispatch, file structure queries |
 | Session Tree | Rust | Branching conversation history, node management |
+| Compaction Engine | Rust | Automatic context window management via message summarization |
+| Export Manager | Rust | Session export to JSONL and Markdown formats |
 | OPFS | Browser API | File storage for repository contents and tool definitions (`.tools/` directory) |
 | IndexedDB | Browser API | Session tree, pending tool approvals, execution history |
 
@@ -220,6 +222,7 @@ All tools operate directly on OPFS:
 | `read` | Read file contents with line numbers | getFileHandle → read |
 | `write` | Write/create files | getFileHandle → createWritable → write |
 | `edit` | Surgical find-and-replace | read → modify → write |
+| `ls` | List directory contents | Read directory entries |
 | `grep` | Search file contents | Walk directory → read each |
 | `find` | Discover files by pattern | Walk directory → filter paths |
 | `js` | Execute JavaScript | Arbitrary (via user code) |
@@ -717,6 +720,24 @@ All built-in tools are implemented in JavaScript and operate directly on Indexed
 // Implementation: OPFS read → find (with fuzzy matching) → replace → OPFS write
 ```
 
+#### `ls` Tool
+```javascript
+{
+  name: "ls",
+  description: "List directory contents",
+  parameters: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "Directory path to list" },
+      detailed: { type: "boolean", description: "Show detailed listing with permissions" }
+    },
+    required: ["path"]
+  }
+}
+// Implementation: OPFS get directory handle → iterate entries → format output
+// Returns: "drwxr-xr-x  src/\n-rw-r--r--  Cargo.toml\n..."
+```
+
 #### `grep` Tool
 ```javascript
 {
@@ -788,6 +809,135 @@ const toolFunction = new Function(
 );
 return toolFunction(read, write, grep, find, console);
 ```
+
+---
+
+## Session Management Features
+
+### Context Compaction (Automatic)
+
+**Purpose**: Prevent context window overflow by automatically summarizing older conversation history while preserving the full session tree.
+
+**Location**: Agent Core (Rust)
+
+**Trigger Conditions**:
+- **Proactive**: Token count approaches model limit (configurable threshold, default 80%)
+- **Reactive**: API returns context overflow error
+
+**Compaction Algorithm**:
+1. Keep N most recent messages intact (configurable, default 10)
+2. Summarize older messages into compact representation:
+   - User messages: Summarize intent and key points
+   - Assistant messages: Summarize actions taken and results
+   - Tool calls/results: Summarize what was done, not full output
+3. Insert summary message before the preserved recent messages
+4. Continue conversation with compressed context
+5. Full history remains in session tree (accessible via `/tree`)
+
+**Token Counting**:
+- Track approximate token usage per message
+- Include system prompt, tools, and conversation history
+- Update count after each LLM response
+
+**Configuration** (in IndexedDB settings store):
+```javascript
+{
+  compaction: {
+    enabled: true,
+    proactiveThreshold: 0.8,        // Trigger at 80% of context limit
+    preserveRecentMessages: 10,     // Keep last N messages uncompressed
+    autoCompact: true,              // Automatic vs manual only
+    modelLimits: {
+      "gemini-1.5-pro": 128000,    // Context window size per model
+      "gemini-1.5-flash": 128000
+    }
+  }
+}
+```
+
+**Compaction Message Format**:
+```
+[Earlier conversation summarized]
+
+The user initialized a session to work on a Rust project. Key actions included:
+- Loading repository from GitHub
+- Reading src/main.rs to understand structure  
+- Creating a new utility module
+- Running tests with cargo test
+
+[Summary ends - see /tree for full history]
+```
+
+### Session Export
+
+**Purpose**: Export session history to external formats for sharing, archiving, or analysis.
+
+**Location**: UI command `/export` triggers Agent Core
+
+**Export Formats**:
+
+#### JSONL Format (Default)
+Each line is a JSON object representing one session entry:
+```jsonl
+{"type": "user", "content": "Help me refactor", "timestamp": "2026-02-07T10:00:00Z"}
+{"type": "assistant", "content": "I'll analyze the code", "timestamp": "2026-02-07T10:00:01Z"}
+{"type": "tool_call", "name": "read", "args": {"path": "src/main.rs"}, "timestamp": "2026-02-07T10:00:02Z"}
+{"type": "tool_result", "name": "read", "output": "...", "timestamp": "2026-02-07T10:00:03Z"}
+```
+
+#### Markdown Format
+Human-readable conversation log:
+```markdown
+# Session Export - 2026-02-07
+
+## User
+Help me refactor
+
+## Assistant
+I'll analyze the code
+
+## Tool: read
+**Args**: `{"path": "src/main.rs"}`
+
+**Output**:
+```
+fn main() {
+    println!("Hello");
+}
+```
+
+## Assistant
+Here's my refactoring suggestion...
+```
+
+**Implementation**:
+```javascript
+// Triggered by UI command
+async function exportSession(sessionId, format = 'jsonl') {
+  const session = await db.sessions.get(sessionId);
+  const history = buildHistoryFromTree(session.root);
+  
+  if (format === 'jsonl') {
+    const jsonl = history.map(entry => JSON.stringify(entry)).join('\n');
+    downloadFile(`session-${sessionId}.jsonl`, jsonl);
+  } else if (format === 'md') {
+    const markdown = convertToMarkdown(history);
+    downloadFile(`session-${sessionId}.md`, markdown);
+  }
+}
+```
+
+**Export Contents**:
+- Full conversation tree with all branches
+- Tool calls and results
+- Timestamps
+- Session metadata (start time, total messages, cost if tracked)
+- Does NOT include: full file contents (references paths only)
+
+**User Interface**:
+- Command: `/export [format]` where format is `jsonl` (default) or `md`
+- Menu option: "Export Session" with format selector
+- Download: Browser initiates file download
 
 ### OPFS Helper Functions
 

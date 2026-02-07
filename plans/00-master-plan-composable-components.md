@@ -1,4 +1,4 @@
-# Master Plan: Composable Web Components Architecture
+# Master Plan: Composable Components Architecture
 
 ## Philosophy
 
@@ -9,88 +9,281 @@ Following Unix philosophy:
 - **Testable**: Each component can be tested in isolation
 - **Deployable**: Each component can be independently deployed
 
+## Technology Stack
+
+- **Rust** → **WASM** (Web Worker) - Core logic
+- **Vanilla JavaScript** (ES2020+) - UI and glue code
+- **Lit HTML** - Template rendering for web components
+- **Standard Web Platform APIs** - No frameworks
+- **Native ES Modules** - No bundlers
+
 ## Component Architecture
 
-Each component is a self-contained web component with:
+Each component is a self-contained web component using Lit HTML with:
 - **Interface**: Standardized input/output contracts
-- **State**: Internal state management
-- **Events**: Publish/subscribe event system
-- **Testing**: Unit and integration tests
+- **State**: Internal state management with reactive updates
+- **Events**: Standard DOM events + custom events
+- **Rendering**: Static (initial) + Dynamic (updates) separation
+- **Testing**: Browser-based unit and integration tests
 - **Documentation**: API docs and usage examples
 
 ## Component Registry
 
 ```
 components/
-├── core/                          # Foundation components (no dependencies)
+├── core/                          # Foundation components (vanilla JS)
+│   ├── event-bus/                # Pub/sub event system
 │   ├── opfs-provider/            # OPFS access wrapper
 │   ├── indexeddb-provider/       # IndexedDB access wrapper
-│   ├── event-bus/                # Pub/sub event system
-│   ├── message-bridge/           # Worker ↔ Main thread messaging
-│   └── api-client/               # LLM API client
+│   └── message-bridge/           # Worker ↔ Main thread messaging
 │
-├── storage/                       # Data persistence components
-│   ├── file-store/               # OPFS file operations
-│   ├── session-store/            # Session tree storage
-│   ├── tool-store/               # Tool definitions storage
-│   └── settings-store/           # Configuration storage
+├── rust/                          # Rust/WASM components
+│   ├── agent-core/               # LLM loop, session management
+│   ├── session-manager/          # Session tree (Rust)
+│   ├── tool-dispatcher/          # Tool routing (Rust)
+│   ├── compaction-engine/        # Context compaction (Rust)
+│   └── export-manager/           # Session export (Rust)
 │
-├── tools/                         # Tool execution components
-│   ├── read-tool/                # File reading tool
-│   ├── write-tool/               # File writing tool
-│   ├── edit-tool/                # File editing tool
-│   ├── ls-tool/                  # Directory listing tool
-│   ├── grep-tool/                # Content search tool
-│   ├── find-tool/                # File discovery tool
-│   └── js-tool/                  # JavaScript execution tool
+├── tools/                         # Tool execution (JS in main thread)
+│   ├── read-tool/
+│   ├── write-tool/
+│   ├── edit-tool/
+│   ├── ls-tool/
+│   ├── grep-tool/
+│   ├── find-tool/
+│   └── js-tool/
 │
-├── agent/                         # Agent orchestration components
-│   ├── session-manager/          # Session tree management
-│   ├── tool-dispatcher/          # Tool routing and execution
-│   ├── compaction-engine/        # Context compaction
-│   ├── context-builder/          # Build LLM context from session
-│   └── export-manager/           # Session export functionality
-│
-├── ui/                            # User interface components
-│   ├── chat-ui/                  # Chat interface
-│   ├── session-tree-ui/          # Session branching visualization
-│   ├── tool-approval-ui/         # Tool approval interface
-│   ├── file-browser-ui/          # File explorer (optional)
-│   └── export-ui/                # Export dialog
-│
-└── integrations/                  # External service components
-    ├── github-loader/            # GitHub repository loading
-    └── llm-provider/             # LLM API integration
+└── ui/                            # UI web components (Lit HTML)
+    ├── chat-ui/
+    ├── session-tree-ui/
+    ├── tool-approval-ui/
+    ├── file-browser-ui/
+    └── export-ui/
 ```
 
-## Component Specification Template
+---
 
-Each component follows this structure:
+## Web Component Model with Lit HTML
 
-```typescript
-// Component Interface
-interface ComponentInterface {
-  // Inputs
-  initialize(config: Config): Promise<void>;
-  
-  // Operations
-  execute(input: Input): Promise<Output>;
-  
-  // Events
-  on(event: string, handler: Function): void;
-  off(event: string, handler: Function): void;
-  
-  // Lifecycle
-  destroy(): Promise<void>;
+Components use **Lit HTML** for efficient, expressive rendering:
+
+### Component Structure
+
+```javascript
+// components/ui/chat-ui/chat-ui.js
+import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+
+export class ChatUi extends LitElement {
+  // Static styles (rendered once)
+  static styles = css`
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    
+    .message {
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+    }
+    
+    .message-user {
+      background: #e3f2fd;
+      margin-left: 2rem;
+    }
+    
+    .message-assistant {
+      background: #f5f5f5;
+      margin-right: 2rem;
+    }
+    
+    .input-area {
+      display: flex;
+      padding: 1rem;
+      border-top: 1px solid #ddd;
+    }
+    
+    textarea {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 0.25rem;
+      resize: none;
+      min-height: 3rem;
+    }
+    
+    button {
+      margin-left: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+  `;
+
+  // Reactive properties (dynamic rendering when changed)
+  static properties = {
+    messages: { type: Array },
+    inputText: { type: String },
+    isLoading: { type: Boolean }
+  };
+
+  constructor() {
+    super();
+    this.messages = [];
+    this.inputText = '';
+    this.isLoading = false;
+  }
+
+  // Dynamic render (called when properties change)
+  render() {
+    return html`
+      <div class="messages">
+        ${this.messages.map(msg => this.renderMessage(msg))}
+      </div>
+      
+      <div class="input-area">
+        <textarea
+          .value="${this.inputText}"
+          @input="${this.handleInput}"
+          @keydown="${this.handleKeydown}"
+          placeholder="Type a message..."
+          ?disabled="${this.isLoading}"
+        ></textarea>
+        <button @click="${this.sendMessage}" ?disabled="${this.isLoading || !this.inputText.trim()}">
+          ${this.isLoading ? 'Loading...' : 'Send'}
+        </button>
+      </div>
+    `;
+  }
+
+  // Helper template for message rendering
+  renderMessage(msg) {
+    return html`
+      <div class="message message-${msg.role}">
+        <div class="content">${msg.content}</div>
+        ${msg.toolCalls ? this.renderToolCalls(msg.toolCalls) : ''}
+      </div>
+    `;
+  }
+
+  renderToolCalls(toolCalls) {
+    return html`
+      <div class="tool-calls">
+        ${toolCalls.map(call => html`
+          <div class="tool-call">
+            <span class="tool-name">${call.name}</span>
+            <pre>${JSON.stringify(call.arguments, null, 2)}</pre>
+          </div>
+        `)}
+      </div>
+    `;
+  }
+
+  // Event handlers
+  handleInput(e) {
+    this.inputText = e.target.value;
+  }
+
+  handleKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      this.sendMessage();
+    }
+  }
+
+  sendMessage() {
+    const text = this.inputText.trim();
+    if (!text || this.isLoading) return;
+
+    // Dispatch custom event
+    this.dispatchEvent(new CustomEvent('message-send', {
+      detail: { text },
+      bubbles: true,
+      composed: true
+    }));
+
+    // Clear input
+    this.inputText = '';
+  }
+
+  // Public API methods
+  addMessage(role, content, toolCalls = null) {
+    this.messages = [...this.messages, { role, content, toolCalls, timestamp: Date.now() }];
+    this.scrollToBottom();
+  }
+
+  scrollToBottom() {
+    this.updateComplete.then(() => {
+      const messagesEl = this.shadowRoot.querySelector('.messages');
+      if (messagesEl) {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    });
+  }
 }
 
-// Standard Events
-interface ComponentEvents {
-  'ready': { timestamp: number };
-  'error': { error: Error; context: any };
-  'state-change': { previous: State; current: State };
-}
+// Register custom element
+customElements.define('chat-ui', ChatUi);
 ```
+
+### Static vs Dynamic Rendering
+
+**Static (One-time)**:
+- Component structure
+- CSS styles
+- Event listener setup
+
+**Dynamic (Reactive)**:
+- Message list updates
+- Input value changes
+- Loading state toggles
+- Conditional rendering
+
+### Usage
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="module">
+    import { ChatUi } from './components/ui/chat-ui/chat-ui.js';
+    import { EventBus } from './components/core/event-bus/event-bus.js';
+    
+    // Initialize event bus
+    const eventBus = new EventBus();
+    
+    // Get reference to chat UI
+    const chatUi = document.querySelector('chat-ui');
+    
+    // Listen for messages
+    chatUi.addEventListener('message-send', (e) => {
+      const { text } = e.detail;
+      eventBus.publish('message:send', { text });
+    });
+    
+    // Listen for agent responses
+    eventBus.subscribe('message:receive', (data) => {
+      chatUi.addMessage(data.role, data.content, data.toolCalls);
+    });
+  </script>
+</head>
+<body>
+  <chat-ui></chat-ui>
+</body>
+</html>
+```
+
+---
 
 ## Core Components
 
@@ -98,998 +291,730 @@ interface ComponentEvents {
 
 **Purpose**: Pub/sub messaging between components
 
-**Interface**:
-```typescript
-interface EventBus {
-  subscribe(event: string, handler: Function): string; // Returns subscription ID
-  unsubscribe(subscriptionId: string): void;
-  publish(event: string, data: any): void;
-  once(event: string, handler: Function): void;
+**Implementation**:
+```javascript
+// components/core/event-bus/event-bus.js
+export class EventBus extends EventTarget {
+  constructor() {
+    super();
+    this.handlers = new Map();
+  }
+
+  subscribe(event, handler) {
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, new Set());
+    }
+    this.handlers.get(event).add(handler);
+    
+    // Return unsubscribe function
+    return () => this.handlers.get(event).delete(handler);
+  }
+
+  publish(event, data) {
+    const handlers = this.handlers.get(event);
+    if (handlers) {
+      handlers.forEach(handler => {
+        try {
+          handler(data);
+        } catch (e) {
+          console.error('Event handler error:', e);
+        }
+      });
+    }
+    
+    // Also dispatch as DOM event for Lit components
+    this.dispatchEvent(new CustomEvent(event, { detail: data }));
+  }
+
+  once(event, handler) {
+    const wrappedHandler = (data) => {
+      this.unsubscribe(event, wrappedHandler);
+      handler(data);
+    };
+    this.subscribe(event, wrappedHandler);
+  }
 }
 ```
 
-**Events**:
-- `tool:call` - Tool execution requested
-- `tool:result` - Tool execution completed
-- `session:update` - Session state changed
-- `storage:change` - Storage data changed
-- `ui:command` - UI command received
-
 **Testing**:
-```typescript
+```javascript
+// Browser-based test
 describe('EventBus', () => {
-  it('should deliver messages to subscribers', () => {
+  it('delivers messages to subscribers', () => {
     const bus = new EventBus();
-    const handler = jest.fn();
-    bus.subscribe('test', handler);
-    bus.publish('test', { data: 'value' });
-    expect(handler).toHaveBeenCalledWith({ data: 'value' });
+    let received = null;
+    bus.subscribe('test', (data) => { received = data; });
+    bus.publish('test', { value: 42 });
+    assert.equal(received.value, 42);
   });
 });
 ```
 
-**Deployment**: Standalone web component
-```html
-<event-bus id="main-bus"></event-bus>
-<script>
-  const bus = document.getElementById('main-bus');
-  bus.subscribe('tool:call', (data) => console.log(data));
-</script>
+---
+
+### 2. OPFS Provider (`components/core/opfs-provider/`)
+
+**Purpose**: Wrapper around Origin Private File System API
+
+**Implementation**:
+```javascript
+// components/core/opfs-provider/opfs-provider.js
+export class OPFSProvider {
+  async readFile(path) {
+    const root = await navigator.storage.getDirectory();
+    const parts = path.split('/').filter(p => p);
+    
+    let dir = root;
+    for (const part of parts.slice(0, -1)) {
+      dir = await dir.getDirectoryHandle(part, { create: true });
+    }
+    
+    const fileHandle = await dir.getFileHandle(parts[parts.length - 1]);
+    const file = await fileHandle.getFile();
+    return await file.text();
+  }
+
+  async writeFile(path, content) {
+    const root = await navigator.storage.getDirectory();
+    const parts = path.split('/').filter(p => p);
+    
+    let dir = root;
+    for (const part of parts.slice(0, -1)) {
+      dir = await dir.getDirectoryHandle(part, { create: true });
+    }
+    
+    const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(content);
+    await writable.close();
+  }
+
+  async readDir(path) {
+    const root = await navigator.storage.getDirectory();
+    const parts = path.split('/').filter(p => p);
+    
+    let dir = root;
+    for (const part of parts) {
+      dir = await dir.getDirectoryHandle(part);
+    }
+    
+    const entries = [];
+    for await (const [name, handle] of dir.entries()) {
+      entries.push({
+        name,
+        path: path ? `${path}/${name}` : name,
+        type: handle.kind,
+        handle
+      });
+    }
+    return entries;
+  }
+
+  async exists(path) {
+    try {
+      await this.readFile(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
 ```
 
 ---
 
-### 2. Message Bridge (`components/core/message-bridge/`)
-
-**Purpose**: Communication between Web Worker and Main Thread
-
-**Interface**:
-```typescript
-interface MessageBridge {
-  // Main Thread API
-  postToWorker(message: WorkerMessage): void;
-  onMessageFromWorker(handler: (msg: WorkerResponse) => void): void;
-  
-  // Worker API  
-  postToMain(message: WorkerResponse): void;
-  onMessageFromMain(handler: (msg: WorkerMessage) => void): void;
-}
-
-interface WorkerMessage {
-  id: string;
-  type: 'init' | 'chat' | 'branch' | 'load_repo' | 'get_history' | 'get_tree' | 'approve_tool' | 'reject_tool';
-  payload: any;
-}
-
-interface WorkerResponse {
-  id: string;
-  type: 'ready' | 'step' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'tool_pending';
-  payload: any;
-}
-```
-
-**Testing**:
-- Mock worker for main thread tests
-- Mock main thread for worker tests
-- Message serialization/deserialization tests
-
-**Deployment**: 
-```html
-<!-- Main Thread -->
-<message-bridge worker-url="worker.js"></message-bridge>
-
-<!-- Worker -->
-<message-bridge endpoint="main"></message-bridge>
-```
-
----
-
-### 3. OPFS Provider (`components/core/opfs-provider/`)
-
-**Purpose**: Wrapper around Origin Private File System
-
-**Interface**:
-```typescript
-interface OPFSProvider {
-  readFile(path: string): Promise<string>;
-  writeFile(path: string, content: string): Promise<void>;
-  readDir(path: string): Promise<DirEntry[]>;
-  exists(path: string): Promise<boolean>;
-  delete(path: string): Promise<void>;
-  walkDir(path: string, callback: (entry: DirEntry) => void): Promise<void>;
-}
-
-interface DirEntry {
-  name: string;
-  path: string;
-  type: 'file' | 'directory';
-  size?: number;
-  modified?: Date;
-}
-```
-
-**Events**:
-- `file:read` - File was read
-- `file:write` - File was written
-- `dir:change` - Directory contents changed
-
-**Testing**:
-- Mock OPFS for unit tests
-- Integration tests with real OPFS
-- Permission error handling tests
-
-**Deployment**:
-```html
-<opfs-provider id="fs"></opfs-provider>
-<script>
-  const fs = document.getElementById('fs');
-  const content = await fs.readFile('src/main.rs');
-</script>
-```
-
----
-
-### 4. IndexedDB Provider (`components/core/indexeddb-provider/`)
+### 3. IndexedDB Provider (`components/core/indexeddb-provider/`)
 
 **Purpose**: Structured data storage
 
-**Interface**:
-```typescript
-interface IndexedDBProvider {
-  get(store: string, key: string): Promise<any>;
-  set(store: string, key: string, value: any): Promise<void>;
-  getAll(store: string): Promise<any[]>;
-  query(store: string, index: string, range: IDBKeyRange): Promise<any[]>;
-  delete(store: string, key: string): Promise<void>;
-  clear(store: string): Promise<void>;
-}
-```
-
-**Schema**:
+**Implementation**:
 ```javascript
-{
-  sessions: { keyPath: 'sessionId' },
-  pending_tools: { keyPath: 'toolId' },
-  history: { keyPath: 'id', indexes: ['sessionId'] },
-  settings: { keyPath: 'key' }
+// components/core/indexeddb-provider/indexeddb-provider.js
+export class IndexedDBProvider {
+  constructor(dbName = 'agent-db', version = 1) {
+    this.dbName = dbName;
+    this.version = version;
+    this.db = null;
+  }
+
+  async initialize() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.version);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        
+        // Create stores
+        if (!db.objectStoreNames.contains('sessions')) {
+          const sessionsStore = db.createObjectStore('sessions', { keyPath: 'sessionId' });
+          sessionsStore.createIndex('created', 'created', { unique: false });
+        }
+        
+        if (!db.objectStoreNames.contains('pending_tools')) {
+          db.createObjectStore('pending_tools', { keyPath: 'toolId' });
+        }
+        
+        if (!db.objectStoreNames.contains('history')) {
+          const historyStore = db.createObjectStore('history', { keyPath: 'id' });
+          historyStore.createIndex('sessionId', 'sessionId', { unique: false });
+        }
+      };
+    });
+  }
+
+  async get(store, key) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([store], 'readonly');
+      const objectStore = transaction.objectStore(store);
+      const request = objectStore.get(key);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
+
+  async set(store, key, value) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([store], 'readwrite');
+      const objectStore = transaction.objectStore(store);
+      const request = objectStore.put({ ...value, [objectStore.keyPath]: key });
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async getAll(store) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([store], 'readonly');
+      const objectStore = transaction.objectStore(store);
+      const request = objectStore.getAll();
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
 }
 ```
-
-**Testing**:
-- Mock IndexedDB for unit tests
-- Migration tests for schema changes
-- Transaction rollback tests
 
 ---
 
-### 5. API Client (`components/core/api-client/`)
+### 4. Message Bridge (`components/core/message-bridge/`)
 
-**Purpose**: LLM API communication
+**Purpose**: Communication between Web Worker (WASM) and Main Thread
 
-**Interface**:
-```typescript
-interface APIClient {
-  initialize(config: APIConfig): void;
-  sendRequest(request: LLMRequest): Promise<LLMResponse>;
-  streamRequest(request: LLMRequest, onChunk: (chunk: string) => void): Promise<void>;
-  abort(): void;
-}
+**Main Thread Side**:
+```javascript
+// components/core/message-bridge/message-bridge-main.js
+export class MessageBridgeMain extends EventTarget {
+  constructor(workerScript) {
+    super();
+    this.worker = new Worker(workerScript, { type: 'module' });
+    this.pendingRequests = new Map();
+    this.messageId = 0;
+    
+    this.worker.onmessage = (e) => this.handleMessage(e.data);
+    this.worker.onerror = (e) => this.handleError(e);
+  }
 
-interface APIConfig {
-  provider: 'gemini' | 'openai' | 'anthropic';
-  apiKey: string;
-  model: string;
-  baseUrl?: string;
-}
+  postToWorker(type, payload) {
+    const id = ++this.messageId;
+    return new Promise((resolve, reject) => {
+      this.pendingRequests.set(id, { resolve, reject });
+      this.worker.postMessage({ id, type, payload });
+    });
+  }
 
-interface LLMRequest {
-  messages: Message[];
-  tools?: ToolDefinition[];
-  temperature?: number;
-  maxTokens?: number;
+  handleMessage(message) {
+    const { id, type, payload, error } = message;
+    
+    if (id && this.pendingRequests.has(id)) {
+      const { resolve, reject } = this.pendingRequests.get(id);
+      this.pendingRequests.delete(id);
+      
+      if (error) {
+        reject(new Error(error));
+      } else {
+        resolve(payload);
+      }
+    } else {
+      // Broadcast message (e.g., tool_call from agent)
+      this.dispatchEvent(new CustomEvent(type, { detail: payload }));
+    }
+  }
+
+  handleError(error) {
+    console.error('Worker error:', error);
+    this.dispatchEvent(new CustomEvent('error', { detail: error }));
+  }
+
+  terminate() {
+    this.worker.terminate();
+  }
 }
 ```
 
-**Features**:
-- Provider abstraction (Gemini, OpenAI, Anthropic)
-- Streaming support
-- Retry logic with exponential backoff
-- Token counting estimation
+**Worker Side**:
+```javascript
+// components/core/message-bridge/message-bridge-worker.js
+export class MessageBridgeWorker {
+  constructor() {
+    self.onmessage = (e) => this.handleMessage(e.data);
+  }
 
-**Testing**:
-- Mock providers for unit tests
-- Retry logic tests
-- Error handling tests
+  handleMessage(message) {
+    const { id, type, payload } = message;
+    
+    // Process message and post response
+    this.processMessage(type, payload)
+      .then(result => {
+        self.postMessage({ id, type: 'response', payload: result });
+      })
+      .catch(error => {
+        self.postMessage({ id, type: 'error', error: error.message });
+      });
+  }
+
+  async processMessage(type, payload) {
+    // Implemented by consumer
+    throw new Error('processMessage must be implemented');
+  }
+
+  postToMain(type, payload) {
+    self.postMessage({ type, payload });
+  }
+}
+```
 
 ---
 
-## Storage Components
+## Rust/WASM Components
 
-### 6. File Store (`components/storage/file-store/`)
+### Rust Components Interface
 
-**Dependencies**: `opfs-provider`, `event-bus`
+Rust components are compiled to WASM and expose functions via wasm-bindgen:
 
-**Purpose**: High-level file operations with caching
+```rust
+// src/lib.rs
+use wasm_bindgen::prelude::*;
 
-**Interface**:
-```typescript
-interface FileStore {
-  read(path: string, options?: ReadOptions): Promise<FileContent>;
-  write(path: string, content: string): Promise<void>;
-  list(path: string): Promise<FileInfo[]>;
-  search(pattern: string): Promise<SearchResult[]>;
-  watch(path: string, callback: (event: WatchEvent) => void): string; // Returns watcher ID
-  unwatch(watcherId: string): void;
+#[wasm_bindgen]
+pub struct AgentCore {
+    session: SessionTree,
+    tool_dispatcher: ToolDispatcher,
 }
 
-interface FileContent {
-  path: string;
-  content: string;
-  lines: string[];
-  size: number;
-  modified: Date;
-}
+#[wasm_bindgen]
+impl AgentCore {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            session: SessionTree::new(),
+            tool_dispatcher: ToolDispatcher::new(),
+        }
+    }
 
-interface ReadOptions {
-  offset?: number;  // Line number
-  limit?: number;   // Max lines
-}
-```
+    pub fn send_message(&mut self, text: String) -> JsValue {
+        // Process message
+        let response = self.process_message(text);
+        serde_wasm_bindgen::to_value(&response).unwrap()
+    }
 
-**Features**:
-- Line-based access with offset/limit
-- File watching for changes
-- Content caching
-- Search indexing
-
-**Events**:
-- `file:changed` - File modified
-- `file:created` - New file created
-- `file:deleted` - File deleted
-
----
-
-### 7. Session Store (`components/storage/session-store/`)
-
-**Dependencies**: `indexeddb-provider`, `event-bus`
-
-**Purpose**: Session tree persistence
-
-**Interface**:
-```typescript
-interface SessionStore {
-  createSession(): Promise<string>; // Returns sessionId
-  getSession(sessionId: string): Promise<Session>;
-  saveSession(session: Session): Promise<void>;
-  deleteSession(sessionId: string): Promise<void>;
-  listSessions(): Promise<SessionSummary[]>;
-  
-  // Node operations
-  appendNode(sessionId: string, parentId: string, node: Node): Promise<Node>;
-  getBranch(sessionId: string, nodeId: string): Promise<Node[]>;
-  branchFrom(sessionId: string, nodeId: string): Promise<string>; // Returns new branch sessionId
-}
-
-interface Session {
-  sessionId: string;
-  root: Node;
-  currentNodeId: string;
-  created: Date;
-  modified: Date;
-}
-
-interface Node {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  toolCalls?: ToolCall[];
-  parentId?: string;
-  children: string[];
-  timestamp: Date;
+    pub fn get_available_tools(&self) -> JsValue {
+        let tools = self.tool_dispatcher.get_tools();
+        serde_wasm_bindgen::to_value(&tools).unwrap()
+    }
 }
 ```
 
-**Features**:
-- Full tree persistence
-- Branching support
-- Efficient parent/child queries
-- Export to JSONL/Markdown
+**Usage from JavaScript**:
+```javascript
+import init, { AgentCore } from '../pkg/agent_core.js';
 
----
-
-### 8. Tool Store (`components/storage/tool-store/`)
-
-**Dependencies**: `opfs-provider`, `indexeddb-provider`
-
-**Purpose**: Tool definition management
-
-**Interface**:
-```typescript
-interface ToolStore {
-  // Discovery
-  scanTools(): Promise<ToolSummary[]>;
-  getTool(name: string): Promise<ToolDefinition>;
-  
-  // Approval workflow
-  submitTool(tool: ToolDefinition): Promise<string>; // Returns pendingToolId
-  approveTool(pendingToolId: string): Promise<void>;
-  rejectTool(pendingToolId: string): Promise<void>;
-  getPendingTools(): Promise<PendingTool[]>;
-  
-  // CRUD
-  createTool(tool: ToolDefinition): Promise<void>;
-  updateTool(name: string, tool: Partial<ToolDefinition>): Promise<void>;
-  deleteTool(name: string): Promise<void>;
-}
-
-interface ToolDefinition {
-  name: string;
-  description: string;
-  version: string;
-  allowedTools?: string[];
-  content: string; // Full SKILL.md content
-}
+await init();
+const agent = new AgentCore();
+const response = agent.send_message("Hello");
 ```
-
-**Storage**:
-- Approved tools: OPFS `.tools/{name}/SKILL.md`
-- Pending tools: IndexedDB `pending_tools` store
 
 ---
 
 ## Tool Components
 
-### 9. Read Tool (`components/tools/read-tool/`)
+Tools are JavaScript functions executed in the main thread:
 
-**Dependencies**: `file-store`
-
-**Purpose**: Read files with line numbers
-
-**Schema** (for LLM):
-```json
-{
-  "name": "read",
-  "description": "Read file contents with optional line offset and limit",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "path": { "type": "string" },
-      "offset": { "type": "number", "description": "1-indexed line number" },
-      "limit": { "type": "number", "description": "Maximum lines to read" }
-    },
-    "required": ["path"]
-  }
-}
-```
-
-**Output Format**:
-```
-1 | fn main() {
-2 |     println!("Hello");
-3 | }
-```
-
----
-
-### 10. Write Tool (`components/tools/write-tool/`)
-
-**Dependencies**: `file-store`
-
-**Purpose**: Write or create files
-
-**Features**:
-- Auto-create parent directories
-- Overwrite protection (optional)
-- Backup on overwrite
-
----
-
-### 11. Edit Tool (`components/tools/edit-tool/`)
-
-**Dependencies**: `file-store`
-
-**Purpose**: Surgical find-and-replace
-
-**Features**:
-- Exact match (primary)
-- Fuzzy match fallback (whitespace normalization, smart quotes)
-- Uniqueness validation
-- Diff generation
-
-**Algorithm**:
-1. Read file content
-2. Try exact match: `content.indexOf(oldText)`
-3. If no match, try fuzzy: `normalize(content).indexOf(normalize(oldText))`
-4. If multiple matches, return error
-5. Perform replacement
-6. Generate unified diff
-7. Write back
-
----
-
-### 12. Ls Tool (`components/tools/ls-tool/`)
-
-**Dependencies**: `file-store`
-
-**Purpose**: List directory contents
-
-**Output Format**:
-```
-drwxr-xr-x  src/
--rw-r--r--  Cargo.toml
--rw-r--r--  README.md
-```
-
----
-
-### 13. Grep Tool (`components/tools/grep-tool/`)
-
-**Dependencies**: `file-store`
-
-**Purpose**: Search file contents
-
-**Features**:
-- Regex pattern matching
-- Case-insensitive option
-- Path filtering
-- Limit results
-
-**Output Format**:
-```
-src/main.rs:42: fn main() {
-src/lib.rs:15: pub fn helper() {
-```
-
----
-
-### 14. Find Tool (`components/tools/find-tool/`)
-
-**Dependencies**: `file-store`
-
-**Purpose**: Find files by pattern
-
-**Features**:
-- Glob pattern matching
-- Directory traversal
-- Path filtering
-
-**Output**: List of file paths
-
----
-
-### 15. Js Tool (`components/tools/js-tool/`)
-
-**Dependencies**: `file-store`
-
-**Purpose**: Execute JavaScript code
-
-**Sandbox**:
 ```javascript
-// Available globals
-const sandbox = {
-  read: (path) => fileStore.read(path),
-  write: (path, content) => fileStore.write(path, content),
-  grep: (pattern, path) => grepTool.execute({ pattern, path }),
-  find: (pattern) => findTool.execute({ pattern }),
-  console: { log: (msg) => captureOutput(msg) }
+// components/tools/read-tool/read-tool.js
+export async function readTool(args, context) {
+  const { path, offset = 1, limit } = args;
+  const { opfs } = context;
+  
+  const content = await opfs.readFile(path);
+  const lines = content.split('\n');
+  
+  const start = Math.max(0, offset - 1);
+  const end = limit ? Math.min(lines.length, start + limit) : lines.length;
+  const selectedLines = lines.slice(start, end);
+  
+  return selectedLines
+    .map((line, i) => `${start + i + 1} | ${line}`)
+    .join('\n');
+}
+
+export const readToolSchema = {
+  name: 'read',
+  description: 'Read file contents with optional line offset and limit',
+  parameters: {
+    type: 'object',
+    properties: {
+      path: { type: 'string' },
+      offset: { type: 'number', description: '1-indexed line number' },
+      limit: { type: 'number', description: 'Maximum lines to read' }
+    },
+    required: ['path']
+  }
 };
-
-// Execution
-const fn = new Function('read', 'write', 'grep', 'find', 'console', userCode);
-return fn(sandbox.read, sandbox.write, sandbox.grep, sandbox.find, sandbox.console);
-```
-
-**Security**:
-- No access to `window`, `document`, `fetch`
-- Timeout protection
-- Output size limits
-
----
-
-## Agent Components
-
-### 16. Session Manager (`components/agent/session-manager/`)
-
-**Dependencies**: `session-store`, `event-bus`
-
-**Purpose**: Manage conversation state and branching
-
-**Interface**:
-```typescript
-interface SessionManager {
-  createSession(): Promise<Session>;
-  loadSession(sessionId: string): Promise<Session>;
-  saveMessage(sessionId: string, message: Message): Promise<void>;
-  branch(sessionId: string, nodeId: string): Promise<string>; // Returns new sessionId
-  getHistory(sessionId: string): Promise<Message[]>;
-  getTree(sessionId: string): Promise<TreeView>;
-}
-```
-
-**Features**:
-- Tree navigation
-- Branch creation
-- History reconstruction
-- Export integration
-
----
-
-### 17. Tool Dispatcher (`components/agent/tool-dispatcher/`)
-
-**Dependencies**: `tool-store`, `event-bus`, all tool components
-
-**Purpose**: Route tool calls to appropriate handlers
-
-**Interface**:
-```typescript
-interface ToolDispatcher {
-  registerTool(tool: ToolComponent): void;
-  unregisterTool(name: string): void;
-  dispatch(call: ToolCall): Promise<ToolResult>;
-  getAvailableTools(): ToolSchema[];
-}
-
-interface ToolCall {
-  id: string;
-  name: string;
-  arguments: any;
-}
-
-interface ToolResult {
-  toolCallId: string;
-  success: boolean;
-  output?: string;
-  error?: string;
-}
-```
-
-**Features**:
-- Dynamic tool registration
-- Error handling
-- Execution timeout
-- Result formatting
-
----
-
-### 18. Compaction Engine (`components/agent/compaction-engine/`)
-
-**Dependencies**: `session-manager`, `api-client`
-
-**Purpose**: Automatic context window management
-
-**Interface**:
-```typescript
-interface CompactionEngine {
-  initialize(config: CompactionConfig): void;
-  checkCompaction(session: Session): Promise<boolean>;
-  compact(session: Session): Promise<Session>;
-  getTokenCount(messages: Message[]): number;
-}
-
-interface CompactionConfig {
-  enabled: boolean;
-  proactiveThreshold: number;    // 0.0 - 1.0
-  preserveRecentMessages: number;
-  modelLimits: Record<string, number>;
-}
-```
-
-**Algorithm**:
-1. Calculate total tokens
-2. If above threshold:
-   a. Identify messages to preserve (recent N)
-   b. Summarize older messages using LLM
-   c. Insert summary message
-   d. Continue with compressed context
-
-**Summarization Prompt**:
-```
-Summarize the following conversation concisely, preserving key information:
-- User intents and requests
-- Actions taken by assistant
-- Important decisions or findings
-
-Conversation:
-{messages}
-```
-
----
-
-### 19. Context Builder (`components/agent/context-builder/`)
-
-**Dependencies**: `session-manager`, `tool-store`
-
-**Purpose**: Build LLM context from session
-
-**Interface**:
-```typescript
-interface ContextBuilder {
-  buildContext(session: Session, options?: BuildOptions): LLMContext;
-  addSystemPrompt(context: LLMContext, prompt: string): LLMContext;
-  addTools(context: LLMContext, tools: ToolSchema[]): LLMContext;
-}
-
-interface LLMContext {
-  messages: Message[];
-  tools?: ToolSchema[];
-  systemPrompt?: string;
-}
-```
-
-**Features**:
-- Message formatting
-- Tool schema generation
-- System prompt injection
-- Context window management
-
----
-
-### 20. Export Manager (`components/agent/export-manager/`)
-
-**Dependencies**: `session-manager`
-
-**Purpose**: Export sessions to various formats
-
-**Interface**:
-```typescript
-interface ExportManager {
-  exportToJsonl(session: Session): string;
-  exportToMarkdown(session: Session): string;
-  exportToHtml(session: Session): string;
-  download(content: string, filename: string, type: string): void;
-}
 ```
 
 ---
 
 ## UI Components
 
-### 21. Chat UI (`components/ui/chat-ui/`)
+All UI components use **Lit HTML** for rendering:
 
-**Dependencies**: `event-bus`
+### Chat UI
+```javascript
+import { ChatUi } from './components/ui/chat-ui/chat-ui.js';
 
-**Purpose**: Message display and input
+// In HTML
+<chat-ui></chat-ui>
 
-**Features**:
-- Message rendering (user, assistant, tool calls, tool results)
-- Code highlighting
-- Markdown rendering
-- Image display
-- Message input with multiline support
-- @file references
-
-**Events**:
-- `message:send` - User sent message
-- `message:edit` - User edited message
-- `command:invoke` - User invoked /command
-
----
-
-### 22. Session Tree UI (`components/ui/session-tree-ui/`)
-
-**Dependencies**: `session-manager`, `event-bus`
-
-**Purpose**: Visualize and navigate session branches
-
-**Features**:
-- Tree visualization
-- Branch selection
-- Node labeling
-- Search/filter
-- Fork creation
-
----
-
-### 23. Tool Approval UI (`components/ui/tool-approval-ui/`)
-
-**Dependencies**: `tool-store`, `event-bus`
-
-**Purpose**: Review and approve pending tools
-
-**Features**:
-- SKILL.md preview
-- Syntax highlighting
-- Diff view (for updates)
-- Approve/Reject buttons
-- Bulk operations
-
----
-
-## Integration Components
-
-### 24. GitHub Loader (`components/integrations/github-loader/`)
-
-**Dependencies**: `opfs-provider`, `event-bus`
-
-**Purpose**: Load repositories from GitHub
-
-**Interface**:
-```typescript
-interface GitHubLoader {
-  loadRepository(owner: string, repo: string, branch?: string): Promise<LoadResult>;
-  getFileTree(owner: string, repo: string): Promise<FileTreeEntry[]>;
-  downloadFile(url: string): Promise<string>;
-}
-
-interface LoadResult {
-  fileCount: number;
-  bytesDownloaded: number;
-  errors: string[];
-}
+// In JS
+const chat = document.querySelector('chat-ui');
+chat.addEventListener('message-send', (e) => {
+  console.log('User said:', e.detail.text);
+});
 ```
 
-**Features**:
-- Tree API for file listing
-- Blob download
-- Parallel downloads
-- Progress reporting
-- Error handling
+### Session Tree UI
+```javascript
+import { SessionTreeUi } from './components/ui/session-tree-ui/session-tree-ui.js';
 
----
+class SessionTreeUi extends LitElement {
+  static properties = {
+    session: { type: Object },
+    selectedNode: { type: String }
+  };
 
-## Component Composition
-
-### Example: Building the Full Agent
-
-```typescript
-// 1. Initialize core
-const eventBus = new EventBus();
-const opfsProvider = new OPFSProvider();
-const indexeddbProvider = new IndexedDBProvider();
-const messageBridge = new MessageBridge();
-const apiClient = new APIClient();
-
-// 2. Initialize storage
-const fileStore = new FileStore({ opfsProvider, eventBus });
-const sessionStore = new SessionStore({ indexeddbProvider, eventBus });
-const toolStore = new ToolStore({ opfsProvider, indexeddbProvider });
-
-// 3. Initialize tools
-const tools = {
-  read: new ReadTool({ fileStore }),
-  write: new WriteTool({ fileStore }),
-  edit: new EditTool({ fileStore }),
-  ls: new LsTool({ fileStore }),
-  grep: new GrepTool({ fileStore }),
-  find: new FindTool({ fileStore }),
-  js: new JsTool({ fileStore })
-};
-
-// 4. Initialize agent
-const sessionManager = new SessionManager({ sessionStore, eventBus });
-const toolDispatcher = new ToolDispatcher({ eventBus });
-Object.values(tools).forEach(tool => toolDispatcher.registerTool(tool));
-
-const compactionEngine = new CompactionEngine({ 
-  sessionManager, 
-  apiClient,
-  config: { enabled: true, proactiveThreshold: 0.8 }
-});
-
-const contextBuilder = new ContextBuilder({ sessionManager, toolStore });
-const exportManager = new ExportManager({ sessionManager });
-
-// 5. Initialize UI
-const chatUi = new ChatUi({ eventBus });
-const sessionTreeUi = new SessionTreeUi({ sessionManager, eventBus });
-const toolApprovalUi = new ToolApprovalUi({ toolStore, eventBus });
-
-// 6. Wire up message bridge
-messageBridge.onMessageFromWorker(async (msg) => {
-  switch (msg.type) {
-    case 'tool_call':
-      const result = await toolDispatcher.dispatch(msg.payload);
-      messageBridge.postToWorker({ 
-        id: msg.id, 
-        type: 'tool_result', 
-        payload: result 
-      });
-      break;
-    // ... handle other message types
+  render() {
+    return html`
+      <div class="tree">
+        ${this.renderNode(this.session.root)}
+      </div>
+    `;
   }
-});
 
-// 7. Start
-await Promise.all([
-  opfsProvider.initialize(),
-  indexeddbProvider.initialize(),
-  messageBridge.initialize()
-]);
-
-eventBus.publish('system:ready', { timestamp: Date.now() });
+  renderNode(node) {
+    return html`
+      <div class="node" ?selected="${node.id === this.selectedNode}">
+        <span @click="${() => this.selectNode(node.id)}">
+          ${node.content.substring(0, 50)}...
+        </span>
+        ${node.children?.map(child => this.renderNode(child))}
+      </div>
+    `;
+  }
+}
 ```
+
+---
 
 ## Testing Strategy
 
-### Unit Tests
-Each component has isolated unit tests with mocked dependencies:
+### Browser-Based Testing
 
-```typescript
-// Example: read-tool.spec.ts
-describe('ReadTool', () => {
-  let tool: ReadTool;
-  let mockFileStore: jest.Mocked<FileStore>;
+No npm/jest - tests run directly in browser:
 
-  beforeEach(() => {
-    mockFileStore = {
-      read: jest.fn()
-    } as any;
-    tool = new ReadTool({ fileStore: mockFileStore });
-  });
-
-  it('should read file with line numbers', async () => {
-    mockFileStore.read.mockResolvedValue({
-      content: 'line1\nline2\nline3',
-      lines: ['line1', 'line2', 'line3']
-    });
-
-    const result = await tool.execute({ path: 'test.txt' });
+```html
+<!-- tests/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Component Tests</title>
+  <style>
+    .pass { color: green; }
+    .fail { color: red; }
+  </style>
+</head>
+<body>
+  <h1>Tests</h1>
+  <div id="results"></div>
+  
+  <script type="module">
+    import { EventBus } from '../components/core/event-bus/event-bus.js';
+    import { OPFSProvider } from '../components/core/opfs-provider/opfs-provider.js';
     
-    expect(result).toBe('1 | line1\n2 | line2\n3 | line3');
-  });
-
-  it('should respect offset and limit', async () => {
-    mockFileStore.read.mockResolvedValue({
-      content: 'line1\nline2\nline3\nline4',
-      lines: ['line1', 'line2', 'line3', 'line4']
-    });
-
-    const result = await tool.execute({ path: 'test.txt', offset: 2, limit: 1 });
+    const results = document.getElementById('results');
+    let passCount = 0;
+    let failCount = 0;
     
-    expect(result).toBe('2 | line2');
-  });
-});
+    function test(name, fn) {
+      try {
+        fn();
+        results.innerHTML += `<div class="pass">✓ ${name}</div>`;
+        passCount++;
+      } catch (e) {
+        results.innerHTML += `<div class="fail">✗ ${name}: ${e.message}</div>`;
+        failCount++;
+      }
+    }
+    
+    function assertEqual(actual, expected, msg) {
+      if (actual !== expected) {
+        throw new Error(`${msg || 'Assertion failed'}: expected ${expected}, got ${actual}`);
+      }
+    }
+    
+    // EventBus tests
+    test('EventBus subscribe and publish', () => {
+      const bus = new EventBus();
+      let received = null;
+      bus.subscribe('test', (data) => { received = data; });
+      bus.publish('test', { value: 42 });
+      assertEqual(received.value, 42);
+    });
+    
+    test('EventBus unsubscribe', () => {
+      const bus = new EventBus();
+      let count = 0;
+      const unsubscribe = bus.subscribe('test', () => count++);
+      bus.publish('test');
+      unsubscribe();
+      bus.publish('test');
+      assertEqual(count, 1);
+    });
+    
+    // Summary
+    results.innerHTML += `<hr><div>Passed: ${passCount}, Failed: ${failCount}</div>`;
+  </script>
+</body>
+</html>
 ```
 
 ### Integration Tests
+
 Test component interactions:
 
-```typescript
-// Example: tool-dispatcher.integration.spec.ts
-describe('ToolDispatcher Integration', () => {
-  it('should route tool calls to correct tool', async () => {
+```html
+<!-- tests/integration.html -->
+<script type="module">
+  import { EventBus } from '../components/core/event-bus/event-bus.js';
+  import { ChatUi } from '../components/ui/chat-ui/chat-ui.js';
+  
+  async function testChatWorkflow() {
     const eventBus = new EventBus();
-    const fileStore = new FileStore({ /* ... */ });
-    const dispatcher = new ToolDispatcher({ eventBus });
+    const chat = document.createElement('chat-ui');
+    document.body.appendChild(chat);
     
-    const readTool = new ReadTool({ fileStore });
-    dispatcher.registerTool(readTool);
-
-    const result = await dispatcher.dispatch({
-      id: '1',
-      name: 'read',
-      arguments: { path: 'test.txt' }
+    let messageSent = false;
+    chat.addEventListener('message-send', () => {
+      messageSent = true;
     });
-
-    expect(result.success).toBe(true);
-  });
-});
+    
+    // Simulate user input
+    chat.inputText = 'Hello';
+    chat.sendMessage();
+    
+    assert(messageSent, 'Message should be sent');
+  }
+</script>
 ```
 
-### E2E Tests
-Full user workflows:
+---
 
-```typescript
-// Example: full-workflow.e2e.spec.ts
-describe('Full Agent Workflow', () => {
-  it('should complete conversation with tool calls', async () => {
-    const agent = await createTestAgent();
-    
-    // User sends message
-    await agent.sendMessage('Read the main.rs file');
-    
-    // Agent calls read tool
-    await agent.waitForToolCall('read');
-    
-    // Tool returns result
-    await agent.provideToolResult({ content: 'fn main() {}' });
-    
-    // Agent responds
-    const response = await agent.waitForResponse();
-    expect(response).toContain('fn main()');
-  });
-});
+## Directory Structure
+
+```
+project/
+├── Cargo.toml              # Rust workspace
+├── src/                    # Rust source
+│   ├── lib.rs              # WASM entry
+│   ├── agent.rs            # Agent core
+│   ├── session.rs          # Session tree
+│   ├── tools.rs            # Tool dispatch
+│   └── compaction.rs       # Context compaction
+│
+├── www/                    # Web assets
+│   ├── index.html          # Main HTML
+│   ├── index.js            # Entry point
+│   ├── styles.css          # Global styles
+│   │
+│   ├── components/         # Components
+│   │   ├── core/
+│   │   │   ├── event-bus/
+│   │   │   │   ├── event-bus.js
+│   │   │   │   └── README.md
+│   │   │   ├── opfs-provider/
+│   │   │   │   └── opfs-provider.js
+│   │   │   ├── indexeddb-provider/
+│   │   │   │   └── indexeddb-provider.js
+│   │   │   └── message-bridge/
+│   │   │       ├── message-bridge-main.js
+│   │   │       └── message-bridge-worker.js
+│   │   │
+│   │   ├── tools/
+│   │   │   ├── read-tool.js
+│   │   │   ├── write-tool.js
+│   │   │   ├── edit-tool.js
+│   │   │   ├── ls-tool.js
+│   │   │   ├── grep-tool.js
+│   │   │   ├── find-tool.js
+│   │   │   └── js-tool.js
+│   │   │
+│   │   └── ui/
+│   │       ├── chat-ui/
+│   │       │   ├── chat-ui.js
+│   │       │   └── README.md
+│   │       ├── session-tree-ui/
+│   │       │   └── session-tree-ui.js
+│   │       ├── tool-approval-ui/
+│   │       │   └── tool-approval-ui.js
+│   │       └── export-ui/
+│   │           └── export-ui.js
+│   │
+│   ├── tests/
+│   │   ├── index.html
+│   │   └── integration.html
+│   │
+│   └── worker.js           # Web Worker entry
+│
+├── pkg/                    # Generated WASM (gitignored)
+│
+└── plans/
+    └── # Architecture plans
 ```
 
-## Deployment Strategy
+---
 
-### Individual Component Deployment
-Each component can be deployed as:
-1. **npm package**: `npm install @agent/read-tool`
-2. **CDN**: `<script src="https://cdn.agent.dev/read-tool.js">`
-3. **Git submodule**: `git submodule add ...`
+## Build Process
 
-### Versioning
-- Semantic versioning for each component
-- Compatibility matrix (which versions work together)
-- Automated dependency updates
-
-### Documentation
-Each component includes:
-- `README.md` - Usage and API
-- `API.md` - Complete interface documentation
-- `EXAMPLES.md` - Usage examples
-- `CHANGELOG.md` - Version history
-
-## Development Workflow
-
-### Creating a New Component
+### Development
 
 ```bash
-# 1. Generate component scaffold
-npm run create-component -- --name my-tool --category tools
+# 1. Build Rust to WASM
+cargo build --target wasm32-unknown-unknown --release
 
-# 2. Implement interface
-cd components/tools/my-tool
-cat > src/my-tool.ts << 'EOF'
-export class MyTool implements ToolComponent {
-  async execute(input: MyToolInput): Promise<MyToolOutput> {
-    // Implementation
-  }
-}
-EOF
+# Or use wasm-pack (optional)
+wasm-pack build --target web
 
-# 3. Write tests
-npm run test
+# 2. Serve with Python
+python3 -m http.server 8000
 
-# 4. Build
-npm run build
-
-# 5. Document
-npm run docs
-
-# 6. Publish
-npm publish
+# Or use Rust alternative
+cargo install basic-http-server
+basic-http-server
 ```
 
-### Component Checklist
+### Production
 
-Before a component is considered complete:
-- [ ] Interface defined and documented
-- [ ] Implementation complete
-- [ ] Unit tests (100% coverage)
-- [ ] Integration tests
-- [ ] README with examples
-- [ ] Performance benchmarks
-- [ ] Browser compatibility verified
-- [ ] Security review (if applicable)
+```bash
+# Build optimized WASM
+cargo build --release --target wasm32-unknown-unknown
 
-## Migration from Monolithic
+# Deploy www/ directory to static host
+# - GitHub Pages
+# - Netlify
+# - Cloudflare Pages
+```
 
-### Phase 1: Extract Core
-1. Create `event-bus` component
-2. Create `opfs-provider` component
-3. Create `indexeddb-provider` component
-4. Migrate existing code to use components
+---
 
-### Phase 2: Extract Tools
-1. Port each tool to standalone component
-2. Add comprehensive tests
-3. Update tool dispatcher
+## Dependencies
 
-### Phase 3: Extract Agent Logic
-1. Create `session-manager` component
-2. Create `compaction-engine` component
-3. Create `context-builder` component
+### Rust (Cargo.toml)
+```toml
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console", "Window", "Worker", "WorkerGlobalScope"] }
+uuid = { version = "1.0", features = ["v4", "js"] }
+chrono = { version = "0.4", features = ["serde"] }
+getrandom = { version = "0.2", features = ["js"] }
+```
 
-### Phase 4: Extract UI
-1. Create `chat-ui` component
-2. Create `session-tree-ui` component
-3. Create `tool-approval-ui` component
+### JavaScript
+- **Lit HTML**: Loaded from CDN
+  ```javascript
+  import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+  ```
+- No npm dependencies
+- No build step for JavaScript
 
-### Phase 5: Polish
-1. Performance optimization
-2. Documentation
-3. Examples
-4. Community contribution guidelines
+---
 
-## Conclusion
+## Migration Path
 
-This architecture enables:
-- **Independent development**: Teams can work on components in parallel
-- **Selective adoption**: Users can use only the components they need
-- **Easy testing**: Each component is testable in isolation
-- **Long-term maintainability**: Small, focused components are easier to maintain
-- **Community contributions**: Clear interfaces make it easy to contribute new components
+### Phase 1: Setup Infrastructure
+1. Create directory structure
+2. Set up Rust project with wasm-bindgen
+3. Add Lit HTML via CDN
+4. Create basic EventBus
 
-The Unix philosophy applied to web components: small pieces, loosely joined, working together through standard interfaces.
+### Phase 2: Core Components
+1. Implement OPFSProvider
+2. Implement IndexedDBProvider
+3. Implement MessageBridge
+4. Write tests
+
+### Phase 3: Rust Components
+1. Port session management to Rust
+2. Port tool dispatch to Rust
+3. Port compaction to Rust
+4. Add WASM bindings
+
+### Phase 4: UI Components
+1. Create ChatUi with Lit
+2. Create SessionTreeUi with Lit
+3. Create ToolApprovalUi with Lit
+4. Wire up event handling
+
+### Phase 5: Integration
+1. Connect all components
+2. End-to-end testing
+3. Performance optimization
+4. Documentation
+
+---
+
+## Summary
+
+**Stack**:
+- Rust → WASM for core logic
+- Vanilla JavaScript for glue code
+- Lit HTML for UI components
+- Native ES Modules
+- No npm, no bundlers, no TypeScript
+
+**Benefits**:
+- Type safety in Rust
+- Efficient rendering with Lit
+- Minimal dependencies
+- Fast development cycle
+- Easy deployment
+
+**Component Model**:
+- Core: Vanilla JS classes
+- UI: Lit HTML web components
+- Tools: JS functions
+- Logic: Rust/WASM
+
+This architecture follows Unix philosophy while using modern web standards.

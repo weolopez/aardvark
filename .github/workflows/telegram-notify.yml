@@ -2,7 +2,7 @@ name: Notify Telegram on File Change
 on:
   push:
     paths:
-      - '/ARCHITECTURE.md' # Replace with your specific file path
+      - 'ARCHITECTURE.md' # Replace with your specific file path
 
 jobs:
   notify:

@@ -135,7 +135,11 @@ export class FileStore {
    * @param {string} repo
    */
   _clearCache(repo) {
-    this.cache.delete(repo);
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(`${repo}:`)) {
+        this.cache.delete(key);
+      }
+    }
   }
 
   /**
@@ -397,7 +401,7 @@ export class FileStore {
   /**
    * Find files matching a glob pattern
    * @param {string} repo - Repository name
-   * @param {string} pattern - Glob pattern (e.g., "*.js", "src/**/*.rs")
+   * @param {string} pattern - Glob pattern (e.g., "*.js", "src/**\/*.rs")
    * @returns {Promise<string[]>}
    */
   async glob(repo, pattern) {

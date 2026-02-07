@@ -9,7 +9,16 @@ export class GeminiProvider extends BaseProvider {
   constructor(config) {
     super(config);
     this.baseUrl = config.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
-    this.model = config.model || 'gemini-pro';
+    this.model = config.model || 'gemini-3-flash-preview';
+  }
+
+  /**
+   * Build the API URL with model and API key
+   * @private
+   */
+  _buildUrl(endpoint) {
+    // URL format: https://generativelanguage.googleapis.com/v1beta/models/{model}:{endpoint}?key={apiKey}
+    return `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:${endpoint}?key=${this.apiKey}`;
   }
 
   /**
@@ -21,7 +30,7 @@ export class GeminiProvider extends BaseProvider {
       
       try {
         const response = await fetch(
-          `${this.baseUrl}/models/${this.model}:generateContent?key=${this.apiKey}`,
+          this._buildUrl('generateContent'),
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -52,7 +61,7 @@ export class GeminiProvider extends BaseProvider {
       
       try {
         const response = await fetch(
-          `${this.baseUrl}/models/${this.model}:streamGenerateContent?key=${this.apiKey}`,
+          this._buildUrl('streamGenerateContent'),
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

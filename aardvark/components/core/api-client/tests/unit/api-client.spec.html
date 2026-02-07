@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Client Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">API Client Unit Tests</h1>
+      <p class="text-gray-600 mt-2">Testing LLM API communication and provider implementations</p>
+    </header>
+
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div><span class="text-gray-600">Total:</span><span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span></div>
+        <div><span class="text-green-600">Passed:</span><span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span></div>
+        <div><span class="text-red-600">Failed:</span><span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span></div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200">Running...</div>
+      </div>
+    </div>
+
+    <div id="test-results" class="space-y-3"></div>
+
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold text-gray-300 mb-4">Console Output</h2>
+      <div id="console-output" class="font-mono text-sm text-green-400 space-y-1 max-h-64 overflow-y-auto">
+        <div class="text-gray-500">Starting tests...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { APIClient, GeminiProvider, OpenAIProvider } from '../../src/index.js';
+
+    class TestRunner {
+      constructor() {
+        this.tests = [];
+        this.passCount = 0;
+        this.failCount = 0;
+      }
+
+      test(name, fn) {
+        this.tests.push({ name, fn });
+      }
+
+      async runAll() {
+        for (const test of this.tests) {
+          await this.runTest(test);
+        }
+        this.showSummary();
+      }
+
+      async runTest(test) {
+        const resultEl = this.createResultElement(test.name);
+        try {
+          await test.fn();
+          this.passCount++;
+          this.markPassed(resultEl);
+          this.log('OK: ' + test.name, 'success');
+        } catch (error) {
+          this.failCount++;
+          this.markFailed(resultEl, error);
+          this.log('FAIL: ' + test.name + ' - ' + error.message, 'error');
+        }
+      }
+
+      createResultElement(name) {
+        const container = document.getElementById('test-results');
+        const el = document.createElement('div');
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-gray-300';
+        el.innerHTML = '<div class="flex items-center"><span class="mr-3">...</span><span class="font-medium">' + name + '</span></div><div class="test-error mt-2 text-sm text-red-600 hidden"></div>';
+        container.appendChild(el);
+        return el;
+      }
+
+      markPassed(el) {
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-green-500 bg-green-50';
+        el.querySelector('span').textContent = 'OK';
+      }
+
+      markFailed(el, error) {
+        el.className = 'border-l-4 p-4 rounded bg-white shadow-sm border-red-500 bg-red-50';
+        el.querySelector('span').textContent = 'FAIL';
+        el.querySelector('.test-error').textContent = error.message;
+        el.querySelector('.test-error').classList.remove('hidden');
+      }
+
+      log(message, type) {
+        const consoleEl = document.getElementById('console-output');
+        const line = document.createElement('div');
+        line.className = type === 'error' ? 'text-red-400' : 'text-green-400';
+        line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      showSummary() {
+        document.getElementById('total-count').textContent = this.tests.length;
+        document.getElementById('pass-count').textContent = this.passCount;
+        document.getElementById('fail-count').textContent = this.failCount;
+        const badge = document.getElementById('status-badge');
+        if (this.failCount === 0) {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+          badge.textContent = 'All Tests Passed!';
+        } else {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+          badge.textContent = this.failCount + ' Tests Failed';
+        }
+        
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
+      }
+    }
+
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) throw new Error(message + ': expected ' + expected + ', got ' + actual);
+    }
+
+    function assertTrue(value, message) {
+      if (!value) throw new Error(message || 'Expected true');
+    }
+
+    function assertNotNull(value, message) {
+      if (value === null || value === undefined) throw new Error(message || 'Expected non-null value');
+    }
+
+    const runner = new TestRunner();
+
+    // Test 1: APIClient initialization
+    runner.test('Initialize APIClient with Gemini provider', () => {
+      const client = new APIClient();
+      client.initialize({
+        provider: 'gemini',
+        apiKey: 'test-key',
+        model: 'gemini-pro'
+      });
+      
+      assertEqual(client.getProvider(), 'gemini', 'Provider should be gemini');
+      assertEqual(client.getModel(), 'gemini-pro', 'Model should be gemini-pro');
+    });
+
+    // Test 2: APIClient initialization with OpenAI
+    runner.test('Initialize APIClient with OpenAI provider', () => {
+      const client = new APIClient();
+      client.initialize({
+        provider: 'openai',
+        apiKey: 'test-key',
+        model: 'gpt-3.5-turbo'
+      });
+      
+      assertEqual(client.getProvider(), 'openai', 'Provider should be openai');
+      assertEqual(client.getModel(), 'gpt-3.5-turbo', 'Model should be gpt-3.5-turbo');
+    });
+
+    // Test 3: Unknown provider throws error
+    runner.test('Unknown provider throws error', () => {
+      const client = new APIClient();
+      try {
+        client.initialize({
+          provider: 'unknown',
+          apiKey: 'test-key'
+        });
+        throw new Error('Should have thrown an error');
+      } catch (error) {
+        assertTrue(error.message.includes('Unknown provider'), 'Should throw unknown provider error');
+      }
+    });
+
+    // Test 4: Token counting (default)
+    runner.test('Token count approximation', () => {
+      const client = new APIClient();
+      const text = 'This is a test message with approximately twenty words in it for testing.';
+      const tokens = client.getTokenCount(text);
+      
+      // Roughly 4 chars per token
+      assertTrue(tokens > 0, 'Should return positive token count');
+      assertTrue(tokens < text.length, 'Token count should be less than character count');
+    });
+
+    // Test 5: GeminiProvider initialization
+    runner.test('GeminiProvider initialization', () => {
+      const provider = new GeminiProvider({
+        apiKey: 'test-key',
+        model: 'gemini-pro'
+      });
+      
+      assertEqual(provider.model, 'gemini-pro', 'Model should be set');
+      assertEqual(provider.apiKey, 'test-key', 'API key should be set');
+      assertNotNull(provider.baseUrl, 'Base URL should have default');
+    });
+
+    // Test 6: OpenAIProvider initialization
+    runner.test('OpenAIProvider initialization', () => {
+      const provider = new OpenAIProvider({
+        apiKey: 'test-key',
+        model: 'gpt-4'
+      });
+      
+      assertEqual(provider.model, 'gpt-4', 'Model should be set');
+      assertEqual(provider.apiKey, 'test-key', 'API key should be set');
+      assertNotNull(provider.baseUrl, 'Base URL should have default');
+    });
+
+    // Test 7: Custom base URL
+    runner.test('Custom base URL configuration', () => {
+      const provider = new GeminiProvider({
+        apiKey: 'test-key',
+        model: 'gemini-pro',
+        baseUrl: 'https://custom.api.com'
+      });
+      
+      assertEqual(provider.baseUrl, 'https://custom.api.com', 'Custom base URL should be set');
+    });
+
+    // Test 8: Retry configuration
+    runner.test('Retry configuration', () => {
+      const provider = new GeminiProvider({
+        apiKey: 'test-key',
+        retries: 5,
+        retryDelay: 2000
+      });
+      
+      assertEqual(provider.retries, 5, 'Retries should be configured');
+      assertEqual(provider.retryDelay, 2000, 'Retry delay should be configured');
+    });
+
+    // Test 9: Abort controller creation
+    runner.test('Abort controller creation', () => {
+      const provider = new GeminiProvider({ apiKey: 'test-key' });
+      const controller = provider._createAbortController();
+      
+      assertNotNull(controller, 'Abort controller should be created');
+      assertTrue(typeof controller.abort === 'function', 'Controller should have abort method');
+    });
+
+    // Test 10: Request without initialization throws error
+    runner.test('Request without initialization throws error', async () => {
+      const client = new APIClient();
+      
+      try {
+        await client.sendRequest({ messages: [{ role: 'user', content: 'test' }] });
+        throw new Error('Should have thrown an error');
+      } catch (error) {
+        assertTrue(error.message.includes('not initialized'), 'Should throw initialization error');
+      }
+    });
+
+    // Test 11: Gemini token counting
+    runner.test('Gemini token counting', () => {
+      const provider = new GeminiProvider({ apiKey: 'test-key' });
+      const text = 'Hello world';
+      const tokens = provider.getTokenCount(text);
+      
+      // ~4 chars per token
+      assertEqual(tokens, 3, 'Should calculate tokens correctly (11 chars / 4 = ~3)');
+    });
+
+    // Test 12: Error formatting
+    runner.test('Error formatting with status code', () => {
+      const provider = new GeminiProvider({ apiKey: 'test-key' });
+      const error = new Error('Rate limit exceeded');
+      const mockResponse = { status: 429, statusText: 'Too Many Requests' };
+      
+      const formatted = provider._formatError(error, mockResponse);
+      
+      assertEqual(formatted.status, 429, 'Should include status code');
+      assertEqual(formatted.statusText, 'Too Many Requests', 'Should include status text');
+      assertTrue(formatted.retryable, '429 errors should be retryable');
+    });
+
+    // Run all tests
+    runner.runAll();
+  </script>
+</body>
+</html>

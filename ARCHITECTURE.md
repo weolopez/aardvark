@@ -2,12 +2,16 @@
 
 ## Overview
 
-A browser-based coding agent that combines LLM capabilities with a JavaScript tool execution environment, backed by IndexedDB storage. The agent runs in a Web Worker (WASM/Rust) while tools execute dynamically in the main thread via JavaScript.
+A browser-based coding agent that combines LLM capabilities with a JavaScript tool execution environment. Uses a hybrid storage approach: OPFS (Origin Private File System) for file storage and IndexedDB for sessions, tools, and metadata. The agent runs in a Web Worker (WASM/Rust) while tools execute dynamically in the main thread via JavaScript.
+
+**Storage Strategy:**
+- **OPFS**: Repository files, tool definitions (large, hierarchical data, editable as files)
+- **IndexedDB**: Session tree, tool execution history, pending tool approvals (structured, queryable data)
 
 ## Context
 
 The agent enables developers to:
-- Load GitHub repositories into a local IndexedDB-backed filesystem
+- Load GitHub repositories into a local OPFS-backed filesystem
 - Chat with an AI assistant that can read, write, and edit files
 - Create custom JavaScript tools dynamically
 - Maintain branching conversation histories
@@ -15,9 +19,11 @@ The agent enables developers to:
 ## Design Philosophy
 
 - **Simplicity over complexity**: No virtual shell, no file explorer UI
-- **Dynamic extensibility**: Tools are data stored in IndexedDB, not hardcoded
-- **Web-native**: Leverages browser capabilities (IndexedDB, Web Workers, fetch)
-- **Hot-reloadable**: New tools become available immediately without page refresh
+- **Dynamic extensibility**: Tools are stored as files in OPFS (`.tools/*.json`), not hardcoded
+- **Security first**: Dynamic tools require user approval before execution
+- **Web-native**: Leverages browser capabilities (OPFS, IndexedDB, Web Workers, fetch)
+- **Hot-reloadable**: New tools become available immediately after approval
+- **Transparent**: Users can read and edit tool definitions as regular files
 
 ---
 
@@ -33,8 +39,10 @@ flowchart TB
             end
             subgraph WorkerThread["Web Worker"]
                 WASM["WASM Agent<br/>(Rust)"]
+                GL["GitHub Loader"]
             end
             DB[(IndexedDB)]
+            OPFS[(OPFS)]
         end
     end
     
@@ -45,12 +53,18 @@ flowchart TB
     User -->|Chat messages| UI
     UI -->|Send messages| WASM
     UI -->|Display results| User
-    TR -->|Read/Write| DB
+    User -->|Review & approve| UI
+    TR -->|Read/Write| OPFS
     WASM -->|LLM requests| Gemini
     Gemini -->|Responses| WASM
     WASM -->|Tool calls| TR
+    WASM -->|Query file structure| OPFS
+    WASM <-->|Read/Write| DB
+    WASM -->|Trigger load| GL
     TR -->|Tool results| WASM
-    DB -.->|Load repo| GitHub
+    GL -->|Fetch repo| GitHub
+    GL -->|Write files| OPFS
+    GL -->|Write .tools/| OPFS
 ```
 
 ---
@@ -63,7 +77,6 @@ flowchart TB
         subgraph MainThread["Main Thread"]
             UI["Chat UI<br/>React/Vanilla JS"]
             TR["Tool Runner<br/>JavaScript"]
-            GL["GitHub Loader<br/>JavaScript"]
         end
         
         subgraph Worker["Web Worker"]
@@ -71,13 +84,19 @@ flowchart TB
                 Agent["Agent Core<br/>LLM Loop, Session Mgmt"]
                 Session["Session Tree<br/>Branching History"]
             end
+            GL["GitHub Loader<br/>JavaScript"]
         end
         
-        subgraph Storage["IndexedDB"]
-            FilesTable["files<br/>(path → content)"]
-            SessionsTable["sessions<br/>(conversation tree)"]
-            ToolsTable["tools<br/>(tool definitions)"]
-            HistoryTable["history<br/>(tool executions)"]
+        subgraph Storage["Storage Layer"]
+            subgraph OPFS["OPFS (Origin Private File System)"]
+                RepoFiles["Repository Files<br/>(path → content)"]
+                ToolFiles[".tools/<br/>(tool definitions as JSON files)"]
+            end
+            subgraph IndexedDB["IndexedDB"]
+                SessionsTable["sessions<br/>(conversation tree)"]
+                PendingTools["pending_tools<br/>(approval queue)"]
+                HistoryTable["history<br/>(tool executions)"]
+            end
         end
     end
     
@@ -85,26 +104,32 @@ flowchart TB
     GitHubAPI["GitHub API"]
     
     UI <-->|postMessage| Agent
+    UI -->|Approve tool| PendingTools
     Agent -->|Tool calls| TR
-    TR -->|CRUD| FilesTable
-    TR -->|Query| ToolsTable
+    TR -->|CRUD| RepoFiles
+    TR -->|Query| ToolFiles
     TR -->|Results| Agent
     Agent <-->|Read/Write| SessionsTable
+    Agent -->|Query| ToolFiles
     Agent -->|API calls| LLM
     GL -->|Fetch repos| GitHubAPI
-    GL -->|Populate| FilesTable
+    GL -->|Write files| RepoFiles
+    GL -->|Write .tools/| ToolFiles
+    Agent -->|Trigger load| GL
+    Agent -->|Query structure| OPFS
 ```
 
 ### Container Responsibilities
 
 | Container | Technology | Responsibility |
 |-----------|-----------|----------------|
-| Chat UI | JavaScript | User interface for chat, displays messages and tool results |
-| Tool Runner | JavaScript | Executes tools (read, write, edit, grep, find, js), operates on IndexedDB |
-| GitHub Loader | JavaScript | Fetches repositories from GitHub API, populates files table |
-| WASM Agent | Rust/WASM | LLM chat loop, session management, tool dispatch |
+| Chat UI | JavaScript | User interface for chat, displays messages, tool approval UI |
+| Tool Runner | JavaScript | Executes tools (read, write, edit, grep, find, js), operates on OPFS |
+| GitHub Loader | JavaScript (Web Worker) | Fetches repositories from GitHub API, writes files and tools to OPFS |
+| WASM Agent | Rust/WASM (Web Worker) | LLM chat loop, session management, tool dispatch, file structure queries |
 | Session Tree | Rust | Branching conversation history, node management |
-| IndexedDB | Browser API | Persistent storage for files, sessions, tools, and history |
+| OPFS | Browser API | File storage for repository contents and tool definitions (`.tools/` directory) |
+| IndexedDB | Browser API | Session tree, pending tool approvals, execution history |
 
 ---
 
@@ -119,9 +144,9 @@ flowchart TB
         ToolDispatcher["Tool Dispatcher"]
         SessionMgr["Session Manager"]
         
-        AgentCore -->|1. Query| ToolDispatcher
-        AgentCore -->|4. Dispatch| ToolDispatcher
-        ToolDispatcher -->|5. Return| AgentCore
+        AgentCore -->|1. Scan .tools/| ToolDispatcher
+        AgentCore -->|5. Dispatch| ToolDispatcher
+        ToolDispatcher -->|8. Return| AgentCore
     end
     
     subgraph MainThread["Main Thread (JavaScript)"]
@@ -141,16 +166,24 @@ flowchart TB
         ToolRunner -->|Execute| ToolImpls
     end
     
-    subgraph IndexedDB["IndexedDB"]
-        ToolsTable["tools table<br/>tool definitions"]
-        FilesTable["files table"]
+    subgraph Storage["Storage Layer"]
+        subgraph OPFS["OPFS"]
+            RepoFiles["Repository Files"]
+            ToolFiles[".tools/*.json"]
+        end
+        subgraph IndexedDB["IndexedDB"]
+            PendingTools["pending_tools<br/>(approval queue)"]
+        end
     end
     
-    ToolDispatcher -->|2. getTools| ToolsTable
-    ToolsTable -->|3. definitions| ToolDispatcher
+    AgentCore -->|2. Read tool files| ToolFiles
+    ToolFiles -->|3. Tool definitions| AgentCore
     ToolDispatcher -->|6. postMessage<br/>tool_call| ToolRunner
-    ToolImpls -->|7. CRUD| FilesTable
+    ToolImpls -->|7. CRUD| RepoFiles
     ToolRunner -->|8. postMessage<br/>result| ToolDispatcher
+    
+    User["User"] -->|4. Approve pending| PendingTools
+    PendingTools -->|.tools/*.json| ToolFiles
 ```
 
 ### Component Descriptions
@@ -158,12 +191,14 @@ flowchart TB
 #### Agent Core (Rust)
 - Manages the LLM conversation loop
 - Maintains session tree state
-- Discovers tools from IndexedDB at startup
+- Discovers tools by scanning OPFS `.tools/` directory at startup
+- Queries OPFS for file structure to provide context to LLM
 - Dispatches tool calls to JavaScript via postMessage
 - Receives tool results and feeds back to LLM
 
 #### Tool Dispatcher (Rust)
-- Queries IndexedDB `tools` table to build tool registry
+- Scans OPFS `.tools/` directory to build tool registry
+- Loads tool definitions from JSON files
 - Converts tool definitions to Gemini function declarations
 - Routes incoming tool calls from LLM to appropriate handler
 - Validates tool results before adding to history
@@ -175,15 +210,15 @@ flowchart TB
 - Returns result to WASM
 
 #### Built-in Tools
-All tools operate directly on IndexedDB:
+All tools operate directly on OPFS:
 
-| Tool | Purpose | IndexedDB Operations |
+| Tool | Purpose | OPFS Operations |
 |------|---------|---------------------|
-| `read` | Read file contents with line numbers | GET files[path] |
-| `write` | Write/create files | PUT files[path] |
-| `edit` | Surgical find-and-replace | GET → modify → PUT files[path] |
-| `grep` | Search file contents | GET all → scan |
-| `find` | Discover files by pattern | GET all keys → filter |
+| `read` | Read file contents with line numbers | getFileHandle → read |
+| `write` | Write/create files | getFileHandle → createWritable → write |
+| `edit` | Surgical find-and-replace | read → modify → write |
+| `grep` | Search file contents | Walk directory → read each |
+| `find` | Discover files by pattern | Walk directory → filter paths |
 | `js` | Execute JavaScript | Arbitrary (via user code) |
 
 #### Session Manager (Rust)
@@ -270,35 +305,80 @@ classDiagram
     IndexedDBStore ..> Tool : stores
 ```
 
-### IndexedDB Schema
+### Storage Schema
 
-#### `files` Store
-```javascript
-{
-  path: "src/main.rs",      // Primary key
-  content: "fn main() {...}",
-  size: 1234,
-  modified: "2026-02-07T10:30:00Z"
-}
+#### OPFS Structure
+Repository files and tool definitions are stored in OPFS using a directory structure:
+```
+OPFS Root
+└── repos/
+    └── {owner}_{repo}/              // Repository root
+        ├── src/
+        │   └── main.rs              // File content
+        ├── Cargo.toml
+        ├── .tools/                  // Tool definitions directory
+        │   ├── count_lines.json     // Tool: count lines in a file
+        │   ├── find_unused.json     // Tool: find unused code
+        │   └── custom_analyzer.json // User-created tool
+        └── ...
 ```
 
-#### `tools` Store
+**File Operations:**
+- **Read**: `root.getFileHandle(path).getFile().text()`
+- **Write**: `root.getFileHandle(path, {create: true}).createWritable().write(content)`
+- **Directory traversal**: Use `FileSystemDirectoryHandle` to walk the tree
+
+#### Tool Definition Format (OPFS)
 ```javascript
+// File: .tools/count_lines.json
 {
-  name: "count_lines",       // Primary key
-  description: "Count lines in a file",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string" }
+  "name": "count_lines",
+  "description": "Count lines in a file",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": { "type": "string" }
     },
-    required: ["path"]
+    "required": ["path"]
   },
-  implementation: "(args) => { const content = read(args.path); return content.split('\\n').length; }",
-  version: 1,
-  created: "2026-02-07T10:30:00Z"
+  "implementation": "(args) => { const content = read(args.path); return content.split('\\n').length; }",
+  "version": 1,
+  "created": "2026-02-07T10:30:00Z",
+  "approved": true
 }
 ```
+
+**Benefits of storing tools as files:**
+- **Readable**: Users can `read .tools/count_lines.json` to inspect tool code
+- **Editable**: Users can modify tools using `edit` or `write` tools
+- **Versionable**: Tool files can be tracked alongside repository code
+- **Secure**: Users must explicitly approve dynamically created tools before execution
+
+#### IndexedDB Schema
+
+Tools are stored as files in OPFS (`.tools/*.json`). IndexedDB is used for sessions, history, and pending tool approvals:
+
+#### `pending_tools` Store
+```javascript
+{
+  toolId: "uuid-789",           // Primary key
+  name: "custom_analyzer",
+  description: "Custom code analyzer",
+  parameters: { ... },
+  implementation: "...",
+  created: "2026-02-07T10:30:00Z",
+  status: "pending",            // "pending", "approved", "rejected"
+  requestedBy: "llm",           // "llm" or "user"
+  reason: "User requested custom analysis"
+}
+```
+
+**Tool Approval Workflow:**
+1. LLM generates new tool → stored in `pending_tools` with status "pending"
+2. UI displays tool to user with code for review
+3. User approves → tool written to OPFS `.tools/{name}.json`
+4. User rejects → tool removed from `pending_tools`
+5. Approved tools are immediately available for use
 
 #### `sessions` Store
 ```javascript
@@ -343,14 +423,15 @@ sequenceDiagram
     participant LLM as Gemini API
     participant TR as Tool Runner
     participant DB as IndexedDB
+    participant OPFS as OPFS
     
     User->>UI: Send message
     
     UI->>Agent: postMessage({type: 'chat', message})
     activate Agent
     
-    Agent->>DB: Query tools table
-    DB-->>Agent: Tool definitions
+    Agent->>OPFS: Scan .tools/ directory
+    OPFS-->>Agent: Tool JSON files
     
     Agent->>Agent: Build tool declarations
     Agent->>LLM: generateContent(tools, history)
@@ -368,13 +449,13 @@ sequenceDiagram
                 alt Tool is built-in
                     TR->>TR: Execute native implementation
                 else Tool is dynamic
-                    TR->>DB: Load implementation from tools table
-                    DB-->>TR: Tool code
-                    TR->>TR: new Function(code)(args)
+                    TR->>OPFS: Load .tools/{name}.json
+                    OPFS-->>TR: Tool JSON file
+                    TR->>TR: new Function(tool.implementation)(args)
                 end
                 
-                TR->>DB: Read/Write files
-                DB-->>TR: Data
+                TR->>OPFS: Read/Write repository files
+                OPFS-->>TR: File data
                 
                 TR-->>Agent: postMessage({type: 'tool_result', result})
                 deactivate TR
@@ -394,15 +475,15 @@ sequenceDiagram
     UI-->>User: Display response
 ```
 
-### Dynamic Tool Creation Flow
+### Dynamic Tool Creation Flow (with Approval)
 
 ```mermaid
 sequenceDiagram
     actor User
     participant UI as Chat UI
     participant Agent as WASM Agent
-    participant TR as Tool Runner
     participant DB as IndexedDB
+    participant OPFS as OPFS
     
     User->>UI: "Create a tool that counts lines"
     
@@ -411,34 +492,49 @@ sequenceDiagram
     Agent->>LLM: Generate tool code from description
     LLM-->>Agent: Tool definition + implementation
     
-    Agent->>TR: postMessage({type: 'create_tool', definition})
-    activate TR
+    Agent->>Agent: Validate tool code
+    Agent->>DB: Insert into pending_tools
+    DB-->>Agent: Tool queued for approval
     
-    TR->>TR: Validate tool code (syntax check)
-    TR->>DB: Insert into tools table
-    DB-->>TR: Success
+    Agent-->>UI: postMessage({type: 'tool_pending', toolId, code})
     
-    TR-->>Agent: postMessage({type: 'tool_created'})
-    deactivate TR
+    User->>UI: Review tool code
     
-    Agent->>DB: Reload tools
-    DB-->>Agent: Updated tool list
-    
-    Agent->>Agent: New tool available immediately
-    
-    Agent-->>UI: "Tool 'count_lines' created and available"
+    alt User approves
+        User->>UI: Click "Approve"
+        UI->>Agent: postMessage({type: 'approve_tool', toolId})
+        
+        Agent->>DB: Get pending tool details
+        DB-->>Agent: Tool definition
+        
+        Agent->>OPFS: Write .tools/{name}.json
+        OPFS-->>Agent: Tool file created
+        
+        Agent->>DB: Update status to "approved"
+        Agent->>Agent: Reload tool registry
+        
+        Agent-->>UI: "Tool 'count_lines' approved and available"
+        
+    else User rejects
+        User->>UI: Click "Reject"
+        UI->>Agent: postMessage({type: 'reject_tool', toolId})
+        Agent->>DB: Delete from pending_tools
+        Agent-->>UI: "Tool creation rejected"
+    end
     
     User->>UI: "Use count_lines on src/main.rs"
     
     UI->>Agent: postMessage({type: 'chat', message})
     
-    Agent->>Agent: Tool in available tools list
+    Agent->>OPFS: Scan .tools/ directory
+    OPFS-->>Agent: Tool definitions (including new tool)
+    Agent->>Agent: Build tool registry
     Agent->>LLM: LLM sees count_lines in declarations
     LLM-->>Agent: Calls count_lines
     
     Agent->>TR: Execute count_lines
-    TR->>DB: Load tool code
-    DB-->>TR: Tool implementation
+    TR->>OPFS: Load tool from .tools/count_lines.json
+    OPFS-->>TR: Tool implementation
     TR->>TR: Execute
     TR-->>Agent: Result
     
@@ -451,34 +547,39 @@ sequenceDiagram
 sequenceDiagram
     actor User
     participant UI as Chat UI
+    participant Agent as WASM Agent
     participant GL as GitHub Loader
     participant GH as GitHub API
-    participant DB as IndexedDB
-    participant Agent as WASM Agent
+    participant OPFS as OPFS
     
     User->>UI: Enter "owner/repo"
     
-    UI->>GL: loadRepository(owner, repo)
+    UI->>Agent: postMessage({type: 'load_repo', owner, repo})
+    activate Agent
+    
+    Agent->>GL: loadRepository(owner, repo)
     activate GL
     
     GL->>GH: GET /repos/{owner}/{repo}/git/trees/main?recursive=1
     GH-->>GL: File tree (paths, blobs)
     
+    GL->>OPFS: Create directory repos/{owner}_{repo}
+    
     loop For each file
         GL->>GH: GET blob content
         GH-->>GL: File content
-        GL->>DB: PUT files[path] = content
+        GL->>OPFS: Write file to repos/{owner}_{repo}/{path}
     end
     
-    GL-->>UI: Repository loaded (file count)
+    GL-->>Agent: Repository loaded (file count)
     deactivate GL
     
-    UI->>Agent: postMessage({type: 'repo_loaded', fileCount})
-    
-    Agent->>DB: Query file listing
-    DB-->>Agent: File paths
+    Agent->>OPFS: Walk directory tree
+    OPFS-->>Agent: File structure
     
     Agent->>Agent: Update context with file structure
+    Agent-->>UI: postMessage({type: 'repo_loaded', fileCount})
+    deactivate Agent
 ```
 
 ### Session Branching
@@ -533,7 +634,7 @@ All built-in tools are implemented in JavaScript and operate directly on Indexed
     required: ["path"]
   }
 }
-// Implementation: Query IndexedDB files store, return content with line numbers
+// Implementation: OPFS getFileHandle(path).getFile().text(), return content with line numbers
 ```
 
 #### `write` Tool
@@ -550,7 +651,7 @@ All built-in tools are implemented in JavaScript and operate directly on Indexed
     required: ["path", "content"]
   }
 }
-// Implementation: PUT to IndexedDB files store
+// Implementation: OPFS getFileHandle(path, {create: true}).createWritable().write(content)
 ```
 
 #### `edit` Tool
@@ -568,7 +669,7 @@ All built-in tools are implemented in JavaScript and operate directly on Indexed
     required: ["path", "oldText", "newText"]
   }
 }
-// Implementation: GET → find (with fuzzy matching) → replace → PUT
+// Implementation: OPFS read → find (with fuzzy matching) → replace → OPFS write
 ```
 
 #### `grep` Tool
@@ -586,7 +687,7 @@ All built-in tools are implemented in JavaScript and operate directly on Indexed
     required: ["pattern"]
   }
 }
-// Implementation: Scan all files (or path subtree), return matches with line numbers
+// Implementation: OPFS walk directory (or path subtree) → read each file → match pattern
 ```
 
 #### `find` Tool
@@ -603,7 +704,7 @@ All built-in tools are implemented in JavaScript and operate directly on Indexed
     required: ["pattern"]
   }
 }
-// Implementation: Query all file paths, filter by pattern
+// Implementation: OPFS walk directory → collect paths → filter by pattern
 ```
 
 #### `js` Tool (Replaces bash)
@@ -628,8 +729,8 @@ All built-in tools are implemented in JavaScript and operate directly on Indexed
 ### Dynamic Tool API
 
 Dynamic tools have access to:
-- `read(path)` - Read file from IndexedDB
-- `write(path, content)` - Write file to IndexedDB
+- `read(path)` - Read file from OPFS
+- `write(path, content)` - Write file to OPFS
 - `grep(pattern, path?)` - Search file contents
 - `find(pattern)` - Find files by pattern
 - `console` - Console logging (captured and returned)
@@ -641,6 +742,47 @@ const toolFunction = new Function(
   tool.implementation
 );
 return toolFunction(read, write, grep, find, console);
+```
+
+### OPFS Helper Functions
+
+```javascript
+// OPFS operations for tools
+async function readFile(path) {
+  const root = await navigator.storage.getDirectory();
+  const handle = await root.getFileHandle(path);
+  const file = await handle.getFile();
+  return await file.text();
+}
+
+async function writeFile(path, content) {
+  const root = await navigator.storage.getDirectory();
+  
+  // Create parent directories
+  const parts = path.split('/');
+  let dir = root;
+  for (const part of parts.slice(0, -1)) {
+    dir = await dir.getDirectoryHandle(part, { create: true });
+  }
+  
+  const handle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(content);
+  await writable.close();
+}
+
+async function walkDirectory(dirHandle, path = '') {
+  const files = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    const fullPath = path ? `${path}/${name}` : name;
+    if (handle.kind === 'directory') {
+      files.push(...await walkDirectory(handle, fullPath));
+    } else {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
 ```
 
 ---
@@ -657,6 +799,8 @@ return toolFunction(read, write, grep, find, console);
 | `load_repo` | `{ owner, repo }` | Trigger GitHub load |
 | `get_history` | `{}` | Request current branch history |
 | `get_tree` | `{}` | Request full session tree |
+| `approve_tool` | `{ toolId }` | Approve pending tool |
+| `reject_tool` | `{ toolId }` | Reject pending tool |
 
 ### Worker (WASM) → Main Thread
 
@@ -668,7 +812,7 @@ return toolFunction(read, write, grep, find, console);
 | `tool_result` | `{ callId, result }` | Tool result (from JS) |
 | `done` | `{ response }` | Final response |
 | `error` | `{ message }` | Error occurred |
-| `create_tool` | `{ definition }` | Store new tool |
+| `tool_pending` | `{ toolId, name, code }` | New tool awaiting approval |
 
 ### Main Thread → Tool Runner
 
@@ -683,7 +827,15 @@ The Tool Runner is part of the Main Thread but logically separate. Communication
    - No access to `window`, `document`, or other browser globals (only injected `read`, `write`, etc.)
    - Runs in the main thread (can be moved to a separate worker later if needed)
 
-2. **IndexedDB Isolation**: Each repository gets its own IndexedDB database or prefix to avoid conflicts.
+2. **Tool Approval**: Dynamically created tools require explicit user approval before execution:
+   - Tools are stored in `pending_tools` queue initially
+   - User must review and approve code before it becomes available
+   - Approved tools are written to OPFS `.tools/{name}.json`
+   - Prevents LLM from executing arbitrary code without oversight
+
+3. **Storage Isolation**:
+   - **OPFS**: Each repository gets its own directory (`repos/{owner}_{repo}/`) to avoid conflicts
+   - **IndexedDB**: Sessions, history, and pending tools are namespaced by agent instance
 
 3. **API Keys**: Stored in WASM memory, never persisted to storage. Passed from UI at initialization.
 
@@ -692,7 +844,7 @@ The Tool Runner is part of the Main Thread but logically separate. Communication
 ## Future Enhancements
 
 1. **Tool Worker**: Move tool execution to a dedicated Web Worker to prevent blocking the main thread during long operations
-2. **Tool Permissions**: Add permission levels (trusted/untrusted) for dynamic tools
+2. **Tool Versioning**: Track tool versions and allow rollback to previous implementations
 3. **Tool Marketplace**: Import tools from URLs or a shared registry
 4. **Streaming**: Add streaming LLM responses for better UX
 5. **File Explorer**: Optional UI component for visual file browsing
@@ -718,22 +870,56 @@ extern "C" {
 // JavaScript side
 globalThis.executeTool = async (name, argsJson) => {
   const args = JSON.parse(argsJson);
-  const tool = await db.tools.get(name);
+  // Load tool from OPFS .tools/ directory
+  const toolJson = await readFile(`.tools/${name}.json`);
+  const tool = JSON.parse(toolJson);
   const result = await executeToolImpl(tool, args);
   return JSON.stringify(result);
 };
+
+globalThis.scanTools = async () => {
+  // Scan .tools/ directory in OPFS
+  const root = await navigator.storage.getDirectory();
+  const toolsDir = await root.getDirectoryHandle('.tools', { create: true });
+  const tools = [];
+  
+  for await (const [name, handle] of toolsDir.entries()) {
+    if (handle.kind === 'file' && name.endsWith('.json')) {
+      const file = await handle.getFile();
+      const content = await file.text();
+      tools.push(JSON.parse(content));
+    }
+  }
+  return JSON.stringify(tools);
+};
 ```
 
-### IndexedDB Transactions
+### OPFS in Web Workers
 
-All tool operations use IndexedDB transactions for consistency:
+OPFS is accessible from Web Workers using `navigator.storage.getDirectory()`:
+
 ```javascript
-async function readFile(path) {
-  const tx = db.transaction('files', 'readonly');
-  const store = tx.objectStore('files');
-  return await store.get(path);
+// In Web Worker (GitHub Loader)
+async function writeRepoFile(repoPath, filePath, content) {
+  const root = await navigator.storage.getDirectory();
+  const repoDir = await root.getDirectoryHandle(repoPath, { create: true });
+  
+  // Create nested directories
+  const parts = filePath.split('/');
+  let current = repoDir;
+  for (const part of parts.slice(0, -1)) {
+    current = await current.getDirectoryHandle(part, { create: true });
+  }
+  
+  // Write file
+  const fileHandle = await current.getFileHandle(parts[parts.length - 1], { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
 }
 ```
+
+**Note:** OPFS operations are async but can use `FileSystemSyncAccessHandle` in Web Workers for synchronous file I/O when needed.
 
 ### Error Handling
 

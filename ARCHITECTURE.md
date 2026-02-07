@@ -19,7 +19,7 @@ The agent enables developers to:
 ## Design Philosophy
 
 - **Simplicity over complexity**: No virtual shell, no file explorer UI
-- **Dynamic extensibility**: Tools are stored as files in OPFS (`.tools/*.json`), not hardcoded
+- **Dynamic extensibility**: Tools are stored as SKILL.md files in OPFS (`.tools/*/SKILL.md`), not hardcoded
 - **Security first**: Dynamic tools require user approval before execution
 - **Web-native**: Leverages browser capabilities (OPFS, IndexedDB, Web Workers, fetch)
 - **Hot-reloadable**: New tools become available immediately after approval
@@ -90,7 +90,7 @@ flowchart TB
         subgraph Storage["Storage Layer"]
             subgraph OPFS["OPFS (Origin Private File System)"]
                 RepoFiles["Repository Files<br/>(path → content)"]
-                ToolFiles[".tools/<br/>(tool definitions as JSON files)"]
+                ToolFiles[".tools/*/<br/>(tool definitions as SKILL.md files)"]
             end
             subgraph IndexedDB["IndexedDB"]
                 SessionsTable["sessions<br/>(conversation tree)"]
@@ -169,21 +169,23 @@ flowchart TB
     subgraph Storage["Storage Layer"]
         subgraph OPFS["OPFS"]
             RepoFiles["Repository Files"]
-            ToolFiles[".tools/*.json"]
+            subgraph ToolDirs[".tools/*/"]
+                SkillMdFiles["SKILL.md files"]
+            end
         end
         subgraph IndexedDB["IndexedDB"]
             PendingTools["pending_tools<br/>(approval queue)"]
         end
     end
     
-    AgentCore -->|2. Read tool files| ToolFiles
-    ToolFiles -->|3. Tool definitions| AgentCore
+    AgentCore -->|2. Scan .tools/| SkillMdFiles
+    SkillMdFiles -->|3. SKILL.md (frontmatter)| AgentCore
     ToolDispatcher -->|6. postMessage<br/>tool_call| ToolRunner
     ToolImpls -->|7. CRUD| RepoFiles
     ToolRunner -->|8. postMessage<br/>result| ToolDispatcher
     
     User["User"] -->|4. Approve pending| PendingTools
-    PendingTools -->|.tools/*.json| ToolFiles
+    PendingTools -->|.tools/*/SKILL.md| SkillMdFiles
 ```
 
 ### Component Descriptions
@@ -197,8 +199,9 @@ flowchart TB
 - Receives tool results and feeds back to LLM
 
 #### Tool Dispatcher (Rust)
-- Scans OPFS `.tools/` directory to build tool registry
-- Loads tool definitions from JSON files
+- Scans OPFS `.tools/` directory to discover available tools
+- Parses SKILL.md files to extract frontmatter (name, description, allowed-tools)
+- Loads full instructions from SKILL.md markdown content when tool is invoked
 - Converts tool definitions to Gemini function declarations
 - Routes incoming tool calls from LLM to appropriate handler
 - Validates tool results before adding to history
@@ -329,29 +332,70 @@ OPFS Root
 - **Directory traversal**: Use `FileSystemDirectoryHandle` to walk the tree
 
 #### Tool Definition Format (OPFS)
-```javascript
-// File: .tools/count_lines.json
-{
-  "name": "count_lines",
-  "description": "Count lines in a file",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "path": { "type": "string" }
-    },
-    "required": ["path"]
-  },
-  "implementation": "(args) => { const content = read(args.path); return content.split('\\n').length; }",
-  "version": 1,
-  "created": "2026-02-07T10:30:00Z",
-  "approved": true
-}
+
+Tools are defined using the SKILL.md format inspired by Claude's Agent Skills system. Each tool is a directory containing SKILL.md with YAML frontmatter and markdown instructions.
+
+```
+OPFS Root
+└── repos/
+    └── {owner}_{repo}/              // Repository root
+        ├── src/
+        │   └── main.rs              // File content
+        ├── .tools/                  // Tools directory
+        │   ├── count-lines/         // Tool directory
+        │   │   ├── SKILL.md         // Tool definition (frontmatter + instructions)
+        │   │   └── scripts/         // Optional bundled scripts
+        │   │       └── count.js
+        │   └── find-unused/         // Another tool
+        │       └── SKILL.md
+        └── ...
 ```
 
-**Benefits of storing tools as files:**
-- **Readable**: Users can `read .tools/count_lines.json` to inspect tool code
+**SKILL.md Structure:**
+
+```markdown
+---
+name: count-lines
+description: Count lines in a file
+allowed-tools: "Read, Write"
+version: 1.0.0
+---
+
+# Count Lines Tool
+
+## Purpose
+Count the number of lines in a specified file.
+
+## Usage
+Call with a file path to get the line count.
+
+## Instructions
+
+1. Read the file at the specified path
+2. Split content by newlines
+3. Return the count
+
+## Example
+
+Input: `{ "path": "src/main.rs" }`
+Output: `42`
+```
+
+**Frontmatter Fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Tool identifier (used as command) |
+| `description` | Yes | Brief description for LLM matching |
+| `allowed-tools` | No | Comma-separated list of tools this tool can use |
+| `version` | No | Tool version (e.g., "1.0.0") |
+
+**Benefits of SKILL.md format:**
+- **Readable**: Users can `read .tools/count-lines/SKILL.md` to inspect tool
 - **Editable**: Users can modify tools using `edit` or `write` tools
 - **Versionable**: Tool files can be tracked alongside repository code
+- **Rich Documentation**: Markdown allows detailed instructions and examples
+- **Progressive Disclosure**: Frontmatter for discovery, SKILL.md for details
 - **Secure**: Users must explicitly approve dynamically created tools before execution
 
 #### IndexedDB Schema
@@ -375,8 +419,8 @@ Tools are stored as files in OPFS (`.tools/*.json`). IndexedDB is used for sessi
 
 **Tool Approval Workflow:**
 1. LLM generates new tool → stored in `pending_tools` with status "pending"
-2. UI displays tool to user with code for review
-3. User approves → tool written to OPFS `.tools/{name}.json`
+2. UI displays SKILL.md to user for review
+3. User approves → tool directory created at `.tools/{name}/` with SKILL.md written
 4. User rejects → tool removed from `pending_tools`
 5. Approved tools are immediately available for use
 
@@ -431,9 +475,9 @@ sequenceDiagram
     activate Agent
     
     Agent->>OPFS: Scan .tools/ directory
-    OPFS-->>Agent: Tool JSON files
+    OPFS-->>Agent: SKILL.md files (frontmatter only)
     
-    Agent->>Agent: Build tool declarations
+    Agent->>Agent: Build tool declarations from frontmatter
     Agent->>LLM: generateContent(tools, history)
     
     loop Agent Loop
@@ -449,9 +493,9 @@ sequenceDiagram
                 alt Tool is built-in
                     TR->>TR: Execute native implementation
                 else Tool is dynamic
-                    TR->>OPFS: Load .tools/{name}.json
-                    OPFS-->>TR: Tool JSON file
-                    TR->>TR: new Function(tool.implementation)(args)
+                    TR->>OPFS: Load .tools/{name}/SKILL.md
+                    OPFS-->>TR: SKILL.md (frontmatter + instructions)
+                    TR->>TR: Parse instructions and execute
                 end
                 
                 TR->>OPFS: Read/Write repository files
@@ -489,31 +533,32 @@ sequenceDiagram
     
     UI->>Agent: postMessage({type: 'chat', message})
     
-    Agent->>LLM: Generate tool code from description
-    LLM-->>Agent: Tool definition + implementation
+    Agent->>LLM: Generate SKILL.md content from description
+    LLM-->>Agent: Tool definition (frontmatter + instructions)
     
-    Agent->>Agent: Validate tool code
+    Agent->>Agent: Validate SKILL.md format
     Agent->>DB: Insert into pending_tools
     DB-->>Agent: Tool queued for approval
     
-    Agent-->>UI: postMessage({type: 'tool_pending', toolId, code})
+    Agent-->>UI: postMessage({type: 'tool_pending', toolId, skillMd})
     
-    User->>UI: Review tool code
+    User->>UI: Review SKILL.md content
     
     alt User approves
         User->>UI: Click "Approve"
         UI->>Agent: postMessage({type: 'approve_tool', toolId})
         
         Agent->>DB: Get pending tool details
-        DB-->>Agent: Tool definition
+        DB-->>Agent: SKILL.md content
         
-        Agent->>OPFS: Write .tools/{name}.json
-        OPFS-->>Agent: Tool file created
+        Agent->>OPFS: Create .tools/{name}/ directory
+        Agent->>OPFS: Write SKILL.md
+        OPFS-->>Agent: Tool created
         
         Agent->>DB: Update status to "approved"
         Agent->>Agent: Reload tool registry
         
-        Agent-->>UI: "Tool 'count_lines' approved and available"
+        Agent-->>UI: "Tool 'count-lines' approved and available"
         
     else User rejects
         User->>UI: Click "Reject"
@@ -522,20 +567,20 @@ sequenceDiagram
         Agent-->>UI: "Tool creation rejected"
     end
     
-    User->>UI: "Use count_lines on src/main.rs"
+    User->>UI: "Use count-lines on src/main.rs"
     
     UI->>Agent: postMessage({type: 'chat', message})
     
     Agent->>OPFS: Scan .tools/ directory
-    OPFS-->>Agent: Tool definitions (including new tool)
-    Agent->>Agent: Build tool registry
-    Agent->>LLM: LLM sees count_lines in declarations
-    LLM-->>Agent: Calls count_lines
+    OPFS-->>Agent: SKILL.md files (including new tool)
+    Agent->>Agent: Build tool registry from frontmatter
+    Agent->>LLM: LLM sees count-lines in declarations
+    LLM-->>Agent: Calls count-lines
     
-    Agent->>TR: Execute count_lines
-    TR->>OPFS: Load tool from .tools/count_lines.json
-    OPFS-->>TR: Tool implementation
-    TR->>TR: Execute
+    Agent->>TR: Execute count-lines
+    TR->>OPFS: Load .tools/count-lines/SKILL.md
+    OPFS-->>TR: SKILL.md instructions
+    TR->>TR: Parse and execute instructions
     TR-->>Agent: Result
     
     Agent-->>UI: Response with line count
@@ -871,27 +916,50 @@ extern "C" {
 globalThis.executeTool = async (name, argsJson) => {
   const args = JSON.parse(argsJson);
   // Load tool from OPFS .tools/ directory
-  const toolJson = await readFile(`.tools/${name}.json`);
-  const tool = JSON.parse(toolJson);
-  const result = await executeToolImpl(tool, args);
+  const skillMd = await readFile(`.tools/${name}/SKILL.md`);
+  const { frontmatter, content } = parseSkillMd(skillMd);
+  const result = await executeSkillInstructions(frontmatter, content, args);
   return JSON.stringify(result);
 };
 
 globalThis.scanTools = async () => {
-  // Scan .tools/ directory in OPFS
+  // Scan .tools/ directory in OPFS for SKILL.md files
   const root = await navigator.storage.getDirectory();
   const toolsDir = await root.getDirectoryHandle('.tools', { create: true });
   const tools = [];
   
   for await (const [name, handle] of toolsDir.entries()) {
-    if (handle.kind === 'file' && name.endsWith('.json')) {
-      const file = await handle.getFile();
-      const content = await file.text();
-      tools.push(JSON.parse(content));
+    if (handle.kind === 'directory') {
+      try {
+        const skillFile = await handle.getFileHandle('SKILL.md');
+        const file = await skillFile.getFile();
+        const content = await file.text();
+        const { frontmatter } = parseSkillMd(content);
+        tools.push({
+          name: frontmatter.name,
+          description: frontmatter.description,
+          allowedTools: frontmatter['allowed-tools']?.split(',').map(s => s.trim()) || []
+        });
+      } catch (e) {
+        // No SKILL.md in this directory, skip
+      }
     }
   }
   return JSON.stringify(tools);
 };
+
+// Parse SKILL.md frontmatter and content
+function parseSkillMd(content) {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!frontmatterMatch) {
+    throw new Error('Invalid SKILL.md format: missing frontmatter');
+  }
+  
+  const frontmatter = parseYaml(frontmatterMatch[1]);
+  const markdownContent = frontmatterMatch[2].trim();
+  
+  return { frontmatter, content: markdownContent };
+}
 ```
 
 ### OPFS in Web Workers

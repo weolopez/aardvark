@@ -153,6 +153,16 @@
         
         this.log(`\nTest run complete: ${this.passCount}/${this.tests.length} passed`, 
           this.failCount === 0 ? 'success' : 'error');
+        
+        // Report to parent window
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
       }
     }
 

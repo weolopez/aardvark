@@ -204,12 +204,23 @@
 
     // Show summary
     const status = document.getElementById('status');
+    const total = passCount + failCount;
     if (failCount === 0) {
       status.className = 'text-lg font-semibold text-green-600';
       status.textContent = `✓ All ${passCount} tests passed`;
     } else {
       status.className = 'text-lg font-semibold text-red-600';
-      status.textContent = `✗ ${failCount} of ${passCount + failCount} tests failed`;
+      status.textContent = `✗ ${failCount} of ${total} tests failed`;
+    }
+    
+    // Report to parent window
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: 'test-complete',
+        total: total,
+        passed: passCount,
+        failed: failCount
+      }, '*');
     }
   </script>
 </body>

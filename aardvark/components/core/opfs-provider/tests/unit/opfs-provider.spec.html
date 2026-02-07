@@ -125,6 +125,16 @@
           badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
           badge.textContent = this.failCount + ' Tests Failed';
         }
+        
+        // Report to parent window
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
       }
     }
 

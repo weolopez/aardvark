@@ -14,6 +14,7 @@ Following Unix philosophy:
 - **Rust** → **WASM** (Web Worker) - Core logic
 - **Vanilla JavaScript** (ES2020+) - UI and glue code
 - **Lit HTML** - Template rendering for web components
+- **Tailwind CSS** - Utility-first styling via CDN
 - **Standard Web Platform APIs** - No frameworks
 - **Native ES Modules** - No bundlers
 
@@ -69,66 +70,14 @@ Components use **Lit HTML** for efficient, expressive rendering:
 
 ### Component Structure
 
+Components use **Lit HTML** for rendering and **Tailwind CSS** for styling:
+
 ```javascript
 // components/ui/chat-ui/chat-ui.js
-import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 
 export class ChatUi extends LitElement {
-  // Static styles (rendered once)
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    
-    .messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1rem;
-    }
-    
-    .message {
-      margin-bottom: 1rem;
-      padding: 0.75rem;
-      border-radius: 0.5rem;
-    }
-    
-    .message-user {
-      background: #e3f2fd;
-      margin-left: 2rem;
-    }
-    
-    .message-assistant {
-      background: #f5f5f5;
-      margin-right: 2rem;
-    }
-    
-    .input-area {
-      display: flex;
-      padding: 1rem;
-      border-top: 1px solid #ddd;
-    }
-    
-    textarea {
-      flex: 1;
-      padding: 0.5rem;
-      border: 1px solid #ccc;
-      border-radius: 0.25rem;
-      resize: none;
-      min-height: 3rem;
-    }
-    
-    button {
-      margin-left: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: #1976d2;
-      color: white;
-      border: none;
-      border-radius: 0.25rem;
-      cursor: pointer;
-    }
-  `;
+  // No static styles - using Tailwind classes!
 
   // Reactive properties (dynamic rendering when changed)
   static properties = {
@@ -144,33 +93,53 @@ export class ChatUi extends LitElement {
     this.isLoading = false;
   }
 
-  // Dynamic render (called when properties change)
+  // Dynamic render with Tailwind classes
   render() {
     return html`
-      <div class="messages">
-        ${this.messages.map(msg => this.renderMessage(msg))}
-      </div>
-      
-      <div class="input-area">
-        <textarea
-          .value="${this.inputText}"
-          @input="${this.handleInput}"
-          @keydown="${this.handleKeydown}"
-          placeholder="Type a message..."
-          ?disabled="${this.isLoading}"
-        ></textarea>
-        <button @click="${this.sendMessage}" ?disabled="${this.isLoading || !this.inputText.trim()}">
-          ${this.isLoading ? 'Loading...' : 'Send'}
-        </button>
+      <div class="flex flex-col h-full bg-white">
+        <!-- Messages List -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          ${this.messages.map(msg => this.renderMessage(msg))}
+        </div>
+        
+        <!-- Input Area -->
+        <div class="flex p-4 border-t border-gray-200 bg-white">
+          <textarea
+            class="flex-1 p-3 border border-gray-300 rounded-lg resize-none 
+                   focus:outline-none focus:ring-2 focus:ring-blue-500
+                   disabled:bg-gray-100"
+            .value="${this.inputText}"
+            @input="${this.handleInput}"
+            @keydown="${this.handleKeydown}"
+            placeholder="Type a message..."
+            rows="2"
+            ?disabled="${this.isLoading}"
+          ></textarea>
+          <button 
+            class="ml-3 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium
+                   hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500
+                   disabled:bg-gray-400 disabled:cursor-not-allowed
+                   transition-colors duration-200"
+            @click="${this.sendMessage}" 
+            ?disabled="${this.isLoading || !this.inputText.trim()}">
+            ${this.isLoading ? html`<span class="animate-pulse">Loading...</span>` : 'Send'}
+          </button>
+        </div>
       </div>
     `;
   }
 
-  // Helper template for message rendering
+  // Helper template with Tailwind classes
   renderMessage(msg) {
     return html`
-      <div class="message message-${msg.role}">
-        <div class="content">${msg.content}</div>
+      <div class="${msg.role === 'user' 
+        ? 'ml-8 bg-blue-50' 
+        : 'mr-8 bg-gray-50'} 
+        p-3 rounded-lg shadow-sm">
+        <div class="text-sm text-gray-500 mb-1">
+          ${msg.role === 'user' ? 'You' : 'Assistant'}
+        </div>
+        <div class="text-gray-800 whitespace-pre-wrap">${msg.content}</div>
         ${msg.toolCalls ? this.renderToolCalls(msg.toolCalls) : ''}
       </div>
     `;
@@ -952,9 +921,13 @@ getrandom = { version = "0.2", features = ["js"] }
 ```
 
 ### JavaScript
-- **Lit HTML**: Loaded from CDN
+- **Lit HTML**: Web components via CDN
   ```javascript
-  import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+  import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+  ```
+- **Tailwind CSS**: Utility classes via CDN
+  ```html
+  <script src="https://cdn.tailwindcss.com"></script>
   ```
 - No npm dependencies
 - No build step for JavaScript
@@ -1001,19 +974,21 @@ getrandom = { version = "0.2", features = ["js"] }
 - Rust → WASM for core logic
 - Vanilla JavaScript for glue code
 - Lit HTML for UI components
+- Tailwind CSS for styling (via CDN)
 - Native ES Modules
 - No npm, no bundlers, no TypeScript
 
 **Benefits**:
 - Type safety in Rust
 - Efficient rendering with Lit
-- Minimal dependencies
+- Rapid UI development with Tailwind
+- Minimal dependencies (2 CDNs)
 - Fast development cycle
 - Easy deployment
 
 **Component Model**:
 - Core: Vanilla JS classes
-- UI: Lit HTML web components
+- UI: Lit HTML web components + Tailwind CSS
 - Tools: JS functions
 - Logic: Rust/WASM
 

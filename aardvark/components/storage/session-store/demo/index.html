@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aardvark - Session Store Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+  <div class="max-w-6xl mx-auto grid grid-cols-12 gap-6 h-[calc(100vh-4rem)]">
+    
+    <!-- Sidebar: Sessions -->
+    <div class="col-span-3 bg-white rounded-lg shadow flex flex-col overflow-hidden">
+      <div class="p-4 border-b">
+        <h2 class="text-xl font-bold mb-4">Sessions</h2>
+        <button id="btn-create-session" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+          + New Session
+        </button>
+      </div>
+      <div id="session-list" class="flex-1 overflow-y-auto p-2 space-y-2">
+        <!-- Session items will go here -->
+      </div>
+    </div>
+
+    <!-- Main: Chat/Tree View -->
+    <div class="col-span-6 bg-white rounded-lg shadow flex flex-col overflow-hidden">
+      <div class="p-4 border-b flex justify-between items-center">
+        <h2 id="current-session-name" class="text-xl font-bold">Select a Session</h2>
+        <div class="text-sm text-gray-500" id="current-session-id"></div>
+      </div>
+      
+      <div id="message-list" class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+        <!-- Messages will go here -->
+      </div>
+
+      <div class="p-4 border-t bg-white">
+        <div class="flex gap-2">
+          <input type="text" id="input-message" class="flex-1 border rounded px-3 py-2" placeholder="Type a message...">
+          <button id="btn-send" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Tree/Details -->
+    <div class="col-span-3 bg-white rounded-lg shadow flex flex-col overflow-hidden">
+      <div class="p-4 border-b">
+        <h2 class="text-xl font-bold">Tree Info</h2>
+      </div>
+      <div class="p-4 space-y-4 overflow-y-auto">
+        <div>
+            <h3 class="font-semibold text-gray-700">Current Branch</h3>
+            <pre id="branch-info" class="text-xs bg-gray-100 p-2 rounded mt-1 overflow-x-auto"></pre>
+        </div>
+        <div>
+            <h3 class="font-semibold text-gray-700">Search Nodes</h3>
+            <input type="text" id="search-input" class="w-full border rounded px-2 py-1 mt-1 text-sm">
+            <div id="search-results" class="mt-2 text-sm space-y-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { SessionStore } from '../src/index.js';
+
+    const store = new SessionStore();
+    let currentSessionId = null;
+    let currentNodeId = null;
+
+    async function init() {
+      await store.initialize();
+      await refreshSessions();
+      
+      // Event Listeners
+      document.getElementById('btn-create-session').onclick = createSession;
+      document.getElementById('btn-send').onclick = sendMessage;
+      document.getElementById('search-input').oninput = performSearch;
+      
+      // Select first session if available
+      const sessions = await store.listSessions();
+      if (sessions.length > 0) {
+        selectSession(sessions[0].sessionId);
+      }
+    }
+
+    async function refreshSessions() {
+      const list = document.getElementById('session-list');
+      list.innerHTML = '';
+      const sessions = await store.listSessions();
+      
+      sessions.forEach(s => {
+        const div = document.createElement('div');
+        div.className = `p-3 rounded cursor-pointer hover:bg-gray-100 ${s.sessionId === currentSessionId ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`;
+        div.innerHTML = `
+            <div class="font-medium">${s.name}</div>
+            <div class="text-xs text-gray-500">${new Date(s.modified).toLocaleTimeString()}</div>
+        `;
+        div.onclick = () => selectSession(s.sessionId);
+        list.appendChild(div);
+      });
+    }
+
+    async function createSession() {
+      const name = prompt("Session Name:", "New Chat " + new Date().toLocaleTimeString());
+      if (!name) return;
+      const id = await store.createSession({ name });
+      await refreshSessions();
+      selectSession(id);
+    }
+
+    async function selectSession(id) {
+      currentSessionId = id;
+      const session = await store.getSession(id);
+      
+      document.getElementById('current-session-name').textContent = session.name;
+      document.getElementById('current-session-id').textContent = id;
+      
+      // Typically session.currentNodeId is the "head"
+      currentNodeId = session.currentNodeId;
+      
+      await renderHistory();
+      await refreshSessions(); // update highlight
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('input-message');
+      const text = input.value.trim();
+      if (!text || !currentSessionId) return;
+      
+      // Add User Node
+      currentNodeId = await store.addNode(currentSessionId, currentNodeId, {
+        role: 'user',
+        content: text
+      });
+      
+      input.value = '';
+      await renderHistory();
+      
+      // Simulate Assistant Reply (mock)
+      setTimeout(async () => {
+        currentNodeId = await store.addNode(currentSessionId, currentNodeId, {
+            role: 'assistant',
+            content: "Echo: " + text
+        });
+        await renderHistory();
+      }, 500);
+    }
+
+    async function renderHistory() {
+      const list = document.getElementById('message-list');
+      list.innerHTML = '';
+      
+      if (!currentNodeId) return;
+
+      const history = await store.getHistory(currentSessionId, currentNodeId);
+      
+      history.forEach(node => {
+        const div = document.createElement('div');
+        const isUser = node.role === 'user';
+        div.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+        
+        div.innerHTML = `
+            <div class="${isUser ? 'bg-blue-600 text-white' : 'bg-white border text-gray-800'} rounded-lg px-4 py-2 max-w-[80%] shadow-sm">
+                <div class="text-xs opacity-75 mb-1">${node.role}</div>
+                <div>${node.content}</div>
+            </div>
+        `;
+        list.appendChild(div);
+      });
+      
+      // Auto scroll
+      list.scrollTop = list.scrollHeight;
+      
+      // Update info
+      document.getElementById('branch-info').textContent = JSON.stringify({
+          head: currentNodeId,
+          depth: history.length
+      }, null, 2);
+    }
+    
+    async function performSearch(e) {
+        if (!currentSessionId) return;
+        const query = e.target.value;
+        const resultsDiv = document.getElementById('search-results');
+        resultsDiv.innerHTML = '';
+        
+        if (!query) return;
+        
+        const nodes = await store.searchNodes(currentSessionId, query);
+        nodes.forEach(n => {
+            const div = document.createElement('div');
+            div.className = 'p-2 bg-yellow-50 border rounded cursor-pointer hover:bg-yellow-100';
+            div.textContent = n.content.slice(0, 50) + '...';
+            div.onclick = () => {
+                // Time travel!
+                if(confirm("Jump to this point in history?")) {
+                    currentNodeId = n.id;
+                    renderHistory();
+                }
+            };
+            resultsDiv.appendChild(div);
+        });
+    }
+
+    init();
+  </script>
+</body>
+</html>

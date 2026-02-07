@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPFS Provider - File Browser Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .file-item:hover { background-color: #f3f4f6; }
+    .selected { background-color: #dbeafe !important; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-6xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-6">
+      <h1 class="text-3xl font-bold text-gray-800">OPFS File Browser</h1>
+      <p class="text-gray-600">Origin Private File System Demo</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- File Browser -->
+      <div class="lg:col-span-2 bg-white rounded-lg shadow-md">
+        <!-- Toolbar -->
+        <div class="p-4 border-b border-gray-200 flex flex-wrap gap-2">
+          <button id="btn-refresh" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+            Refresh
+          </button>
+          <button id="btn-new-file" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+            New File
+          </button>
+          <button id="btn-new-folder" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
+            New Folder
+          </button>
+          <button id="btn-delete" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700" disabled>
+            Delete
+          </button>
+        </div>
+
+        <!-- Breadcrumb -->
+        <div id="breadcrumb" class="px-4 py-2 bg-gray-50 border-b border-gray-200 text-sm">
+          <span class="text-gray-500">/</span>
+        </div>
+
+        <!-- File List -->
+        <div id="file-list" class="max-h-96 overflow-y-auto">
+          <div class="p-8 text-center text-gray-400">
+            Loading...
+          </div>
+        </div>
+      </div>
+
+      <!-- File Editor -->
+      <div class="bg-white rounded-lg shadow-md">
+        <div class="p-4 border-b border-gray-200">
+          <h2 class="text-lg font-semibold text-gray-800">File Editor</h2>
+        </div>
+        
+        <div class="p-4">
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Path</label>
+            <input type="text" id="file-path" 
+              class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="path/to/file.txt">
+          </div>
+          
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Content</label>
+            <textarea id="file-content" rows="12" 
+              class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              placeholder="File content..."></textarea>
+          </div>
+          
+          <button id="btn-save" 
+            class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+            Save File
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="mt-6 bg-white rounded-lg shadow-md p-4">
+      <div class="flex justify-between items-center text-sm">
+        <span id="status-text" class="text-gray-600">Ready</span>
+        <span id="file-count" class="text-gray-500">0 items</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- New File/Folder Modal -->
+  <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-96">
+      <h3 id="modal-title" class="text-lg font-semibold mb-4">Create New</h3>
+      <input type="text" id="modal-input" 
+        class="w-full px-3 py-2 border border-gray-300 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="Name">
+      <div class="flex justify-end gap-2">
+        <button id="modal-cancel" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
+        <button id="modal-confirm" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { OPFSProvider } from '../../../../components/core/opfs-provider/src/index.js';
+
+    const opfs = new OPFSProvider();
+    let currentPath = '';
+    let selectedItem = null;
+    let entries = [];
+
+    // DOM Elements
+    const fileList = document.getElementById('file-list');
+    const breadcrumb = document.getElementById('breadcrumb');
+    const filePathInput = document.getElementById('file-path');
+    const fileContentInput = document.getElementById('file-content');
+    const statusText = document.getElementById('status-text');
+    const fileCount = document.getElementById('file-count');
+    const btnDelete = document.getElementById('btn-delete');
+    const modal = document.getElementById('modal');
+    const modalInput = document.getElementById('modal-input');
+
+    // Initialize
+    async function init() {
+      try {
+        await opfs.initialize();
+        await loadDirectory('');
+        statusText.textContent = 'Ready';
+      } catch (error) {
+        statusText.textContent = 'Error: ' + error.message;
+        console.error('Failed to initialize OPFS:', error);
+      }
+    }
+
+    // Load directory contents
+    async function loadDirectory(path) {
+      currentPath = path;
+      selectedItem = null;
+      btnDelete.disabled = true;
+      
+      try {
+        entries = await opfs.readDir(path);
+        renderFileList();
+        updateBreadcrumb();
+        fileCount.textContent = `${entries.length} items`;
+        statusText.textContent = path || 'Root';
+      } catch (error) {
+        statusText.textContent = 'Error loading directory: ' + error.message;
+        entries = [];
+        renderFileList();
+      }
+    }
+
+    // Render file list
+    function renderFileList() {
+      if (entries.length === 0) {
+        fileList.innerHTML = '<div class="p-8 text-center text-gray-400">Empty directory</div>';
+        return;
+      }
+
+      // Sort: directories first, then files
+      const sorted = [...entries].sort((a, b) => {
+        if (a.type === b.type) return a.name.localeCompare(b.name);
+        return a.type === 'directory' ? -1 : 1;
+      });
+
+      fileList.innerHTML = sorted.map(entry => `
+        <div class="file-item px-4 py-3 border-b border-gray-100 cursor-pointer flex items-center ${selectedItem?.path === entry.path ? 'selected' : ''}"
+             data-path="${entry.path}" data-type="${entry.type}">
+          <span class="mr-3 text-xl">${entry.type === 'directory' ? '📁' : '📄'}</span>
+          <span class="flex-1">${entry.name}</span>
+          <span class="text-xs text-gray-400">${entry.type}</span>
+        </div>
+      `).join('');
+
+      // Add click handlers
+      fileList.querySelectorAll('.file-item').forEach(item => {
+        item.addEventListener('click', () => selectItem(item));
+        item.addEventListener('dblclick', () => openItem(item));
+      });
+    }
+
+    // Update breadcrumb
+    function updateBreadcrumb() {
+      const parts = currentPath.split('/').filter(p => p);
+      let html = '<span class="cursor-pointer hover:text-blue-600" data-path="">Root</span>';
+      
+      let path = '';
+      parts.forEach((part, i) => {
+        path += (path ? '/' : '') + part;
+        html += ` <span class="text-gray-400">/</span> <span class="cursor-pointer hover:text-blue-600" data-path="${path}">${part}</span>`;
+      });
+      
+      breadcrumb.innerHTML = html;
+      
+      breadcrumb.querySelectorAll('span[data-path]').forEach(span => {
+        span.addEventListener('click', () => loadDirectory(span.dataset.path));
+      });
+    }
+
+    // Select item
+    function selectItem(item) {
+      fileList.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
+      item.classList.add('selected');
+      
+      const path = item.dataset.path;
+      const type = item.dataset.type;
+      selectedItem = entries.find(e => e.path === path);
+      btnDelete.disabled = false;
+      
+      if (type === 'file') {
+        loadFile(path);
+      }
+    }
+
+    // Open item (double click)
+    async function openItem(item) {
+      const type = item.dataset.type;
+      const path = item.dataset.path;
+      
+      if (type === 'directory') {
+        await loadDirectory(path);
+      }
+    }
+
+    // Load file content
+    async function loadFile(path) {
+      try {
+        const content = await opfs.readFile(path);
+        filePathInput.value = path;
+        fileContentInput.value = content;
+        statusText.textContent = `Loaded: ${path}`;
+      } catch (error) {
+        statusText.textContent = 'Error loading file: ' + error.message;
+      }
+    }
+
+    // Save file
+    async function saveFile() {
+      const path = filePathInput.value.trim();
+      const content = fileContentInput.value;
+      
+      if (!path) {
+        alert('Please enter a file path');
+        return;
+      }
+
+      try {
+        await opfs.writeFile(path, content);
+        statusText.textContent = `Saved: ${path}`;
+        
+        // Reload current directory if needed
+        const dir = path.split('/').slice(0, -1).join('/');
+        if (dir === currentPath || (dir === '' && currentPath === '')) {
+          await loadDirectory(currentPath);
+        }
+      } catch (error) {
+        statusText.textContent = 'Error saving file: ' + error.message;
+      }
+    }
+
+    // Create new file
+    async function createFile(name) {
+      const path = currentPath ? `${currentPath}/${name}` : name;
+      try {
+        await opfs.writeFile(path, '');
+        await loadDirectory(currentPath);
+        statusText.textContent = `Created: ${path}`;
+      } catch (error) {
+        statusText.textContent = 'Error creating file: ' + error.message;
+      }
+    }
+
+    // Create new folder
+    async function createFolder(name) {
+      const path = currentPath ? `${currentPath}/${name}` : name;
+      try {
+        await opfs.createDir(path);
+        await loadDirectory(currentPath);
+        statusText.textContent = `Created: ${path}`;
+      } catch (error) {
+        statusText.textContent = 'Error creating folder: ' + error.message;
+      }
+    }
+
+    // Delete selected
+    async function deleteSelected() {
+      if (!selectedItem) return;
+      
+      if (!confirm(`Delete "${selectedItem.name}"?`)) return;
+
+      try {
+        await opfs.delete(selectedItem.path, { recursive: selectedItem.type === 'directory' });
+        await loadDirectory(currentPath);
+        filePathInput.value = '';
+        fileContentInput.value = '';
+        statusText.textContent = `Deleted: ${selectedItem.path}`;
+      } catch (error) {
+        statusText.textContent = 'Error deleting: ' + error.message;
+      }
+    }
+
+    // Modal handling
+    let modalMode = 'file'; // 'file' or 'folder'
+    
+    function showModal(mode) {
+      modalMode = mode;
+      document.getElementById('modal-title').textContent = mode === 'file' ? 'New File' : 'New Folder';
+      modalInput.value = '';
+      modal.classList.remove('hidden');
+      modalInput.focus();
+    }
+
+    function hideModal() {
+      modal.classList.add('hidden');
+    }
+
+    async function confirmModal() {
+      const name = modalInput.value.trim();
+      if (!name) return;
+      
+      hideModal();
+      
+      if (modalMode === 'file') {
+        await createFile(name);
+      } else {
+        await createFolder(name);
+      }
+    }
+
+    // Event listeners
+    document.getElementById('btn-refresh').addEventListener('click', () => loadDirectory(currentPath));
+    document.getElementById('btn-new-file').addEventListener('click', () => showModal('file'));
+    document.getElementById('btn-new-folder').addEventListener('click', () => showModal('folder'));
+    document.getElementById('btn-delete').addEventListener('click', deleteSelected);
+    document.getElementById('btn-save').addEventListener('click', saveFile);
+    document.getElementById('modal-cancel').addEventListener('click', hideModal);
+    document.getElementById('modal-confirm').addEventListener('click', confirmModal);
+    
+    modalInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') confirmModal();
+    });
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

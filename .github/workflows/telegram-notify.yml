@@ -1,0 +1,20 @@
+name: Notify Telegram on File Change
+on:
+  push:
+    paths:
+      - '/ARCHITECTURE.md' # Replace with your specific file path
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram Message
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            🚀 File changed: ${{ github.repository }}
+            Modified by: ${{ github.actor }}
+            Commit: ${{ github.event.head_commit.message }}
+            Link: https://github.com/${{ github.repository }}/commit/${{ github.sha }}

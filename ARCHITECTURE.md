@@ -179,7 +179,7 @@ flowchart TB
     end
     
     AgentCore -->|2. Scan .tools/| SkillMdFiles
-    SkillMdFiles -->|3. SKILL.md (frontmatter)| AgentCore
+    SkillMdFiles -->|3. SKILL.md frontmatter| AgentCore
     ToolDispatcher -->|6. postMessage<br/>tool_call| ToolRunner
     ToolImpls -->|7. CRUD| RepoFiles
     ToolRunner -->|8. postMessage<br/>result| ToolDispatcher

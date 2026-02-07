@@ -9,11 +9,12 @@
 - Minimal 3rd party dependencies
 
 ### UI Layer
+- **Lit HTML** (Web Components via CDN)
 - **Vanilla JavaScript** (ES2020+)
-- **Standard Web Platform APIs**
-- No Shadow DOM web components
+- Shadow DOM for style encapsulation
+- Standard Web Platform APIs
 - No React/Vue/Angular
-- Composable via standard DOM and event patterns
+- Composable via custom elements
 
 ### Storage
 - **OPFS** (Origin Private File System) - files
@@ -65,7 +66,7 @@ Not allowed:
 
 ### 4. Standard Web Platform
 Use native browser features:
-- Custom Elements (without Shadow DOM)
+- Custom Elements with Lit HTML (for UI components)
 - ES Modules (import/export)
 - Web Workers
 - Service Workers (optional)
@@ -75,64 +76,223 @@ Use native browser features:
 
 ## Component Model
 
-### No Shadow DOM Components
-Components are standard JavaScript objects/classes that manipulate the DOM directly:
+### Three Types of Components
+
+**1. Core Components (Vanilla JS Classes)**
+Foundation services that don't render UI:
+- EventBus
+- OPFSProvider
+- IndexedDBProvider
+- MessageBridge
+
+**2. UI Components (Lit HTML Web Components)**
+Visual components with reactive rendering:
+- Chat UI
+- Session Tree
+- Tool Approval
+- File Browser
+
+**3. Tool Components (Functions)**
+Executable tools in main thread:
+- read, write, edit, ls, grep, find, js
+
+---
+
+### UI Components with Lit HTML
+
+UI components use **Lit HTML** for efficient, expressive rendering with Shadow DOM:
 
 ```javascript
-// Standard component pattern (NOT web components)
-class ChatUI {
-  constructor(container, eventBus) {
-    this.container = container;
-    this.eventBus = eventBus;
-    this.render();
-    this.attachListeners();
+// www/components/chat-ui.js
+import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+
+export class ChatUi extends LitElement {
+  // Static styles (rendered once, Shadow DOM scoped)
+  static styles = css`
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    
+    .message {
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+    }
+    
+    .message-user {
+      background: #e3f2fd;
+      margin-left: 2rem;
+    }
+    
+    .input-area {
+      display: flex;
+      padding: 1rem;
+      border-top: 1px solid #ddd;
+    }
+    
+    textarea {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 0.25rem;
+      resize: none;
+    }
+    
+    button {
+      margin-left: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+  `;
+
+  // Reactive properties (trigger re-render when changed)
+  static properties = {
+    messages: { type: Array },
+    inputText: { type: String },
+    isLoading: { type: Boolean }
+  };
+
+  constructor() {
+    super();
+    this.messages = [];
+    this.inputText = '';
+    this.isLoading = false;
   }
-  
+
+  // Dynamic render (called when properties change)
   render() {
-    this.container.innerHTML = `
-      <div class="chat-container">
-        <div class="messages"></div>
-        <input class="input" type="text">
-        <button class="send">Send</button>
+    return html`
+      <div class="messages">
+        ${this.messages.map(msg => this.renderMessage(msg))}
+      </div>
+      
+      <div class="input-area">
+        <textarea
+          .value="${this.inputText}"
+          @input="${this.handleInput}"
+          @keydown="${this.handleKeydown}"
+          placeholder="Type a message..."
+          ?disabled="${this.isLoading}"
+        ></textarea>
+        <button 
+          @click="${this.sendMessage}"
+          ?disabled="${this.isLoading || !this.inputText.trim()}"
+        >
+          ${this.isLoading ? 'Loading...' : 'Send'}
+        </button>
       </div>
     `;
-    this.messagesEl = this.container.querySelector('.messages');
-    this.inputEl = this.container.querySelector('.input');
   }
-  
-  attachListeners() {
-    this.container.querySelector('.send').addEventListener('click', () => {
+
+  renderMessage(msg) {
+    return html`
+      <div class="message message-${msg.role}">
+        <div class="content">${msg.content}</div>
+      </div>
+    `;
+  }
+
+  handleInput(e) {
+    this.inputText = e.target.value;
+  }
+
+  handleKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
       this.sendMessage();
+    }
+  }
+
+  sendMessage() {
+    const text = this.inputText.trim();
+    if (!text || this.isLoading) return;
+
+    this.dispatchEvent(new CustomEvent('message-send', {
+      detail: { text },
+      bubbles: true,
+      composed: true
+    }));
+
+    this.inputText = '';
+  }
+
+  // Public API
+  addMessage(role, content) {
+    this.messages = [...this.messages, { role, content }];
+    this.scrollToBottom();
+  }
+
+  scrollToBottom() {
+    this.updateComplete.then(() => {
+      const messages = this.shadowRoot.querySelector('.messages');
+      if (messages) messages.scrollTop = messages.scrollHeight;
     });
   }
-  
-  sendMessage() {
-    const text = this.inputEl.value;
-    this.eventBus.publish('message:send', { text });
-  }
 }
+
+customElements.define('chat-ui', ChatUi);
 ```
 
-### Event-Driven Communication
-Components communicate via a simple event bus (implemented in vanilla JS):
+### Usage
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="module">
+    import { ChatUi } from './components/chat-ui.js';
+    import { EventBus } from './js/event-bus.js';
+    
+    const eventBus = new EventBus();
+    const chat = document.querySelector('chat-ui');
+    
+    chat.addEventListener('message-send', (e) => {
+      eventBus.publish('message:send', e.detail);
+    });
+    
+    eventBus.subscribe('message:receive', (data) => {
+      chat.addMessage(data.role, data.content);
+    });
+  </script>
+</head>
+<body>
+  <chat-ui></chat-ui>
+</body>
+</html>
+```
+
+### Core Components (Vanilla JS)
+
+Non-UI components are plain JavaScript classes:
 
 ```javascript
-// Simple event bus (no npm)
-class EventBus {
+// www/js/event-bus.js
+export class EventBus extends EventTarget {
   constructor() {
+    super();
     this.handlers = new Map();
   }
-  
+
   subscribe(event, handler) {
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Set());
     }
     this.handlers.get(event).add(handler);
-    
-    // Return unsubscribe function
     return () => this.handlers.get(event).delete(handler);
   }
-  
+
   publish(event, data) {
     const handlers = this.handlers.get(event);
     if (handlers) {
@@ -144,6 +304,7 @@ class EventBus {
         }
       });
     }
+    this.dispatchEvent(new CustomEvent(event, { detail: data }));
   }
 }
 ```
@@ -389,81 +550,178 @@ export class OPFS {
 }
 ```
 
-### Pattern 3: UI Components as Classes
+### Pattern 3: UI Components with Lit HTML
 
 ```javascript
 // www/components/chat-ui.js
-export class ChatUI {
-  constructor(container, options = {}) {
-    this.container = typeof container === 'string' 
-      ? document.querySelector(container) 
-      : container;
-    this.eventBus = options.eventBus;
-    this.messages = [];
+import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+
+export class ChatUi extends LitElement {
+  static styles = css`
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
     
-    this.render();
-    this.bindEvents();
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    
+    .message {
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+    }
+    
+    .message-user {
+      background: #e3f2fd;
+      margin-left: 2rem;
+    }
+    
+    .message-assistant {
+      background: #f5f5f5;
+      margin-right: 2rem;
+    }
+    
+    .input-area {
+      display: flex;
+      padding: 1rem;
+      border-top: 1px solid #ddd;
+    }
+    
+    textarea {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 0.25rem;
+      resize: none;
+    }
+    
+    button {
+      margin-left: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+    
+    button:disabled {
+      background: #ccc;
+    }
+  `;
+
+  static properties = {
+    messages: { type: Array },
+    inputText: { type: String },
+    isLoading: { type: Boolean }
+  };
+
+  constructor() {
+    super();
+    this.messages = [];
+    this.inputText = '';
+    this.isLoading = false;
   }
-  
+
   render() {
-    this.container.innerHTML = `
-      <div class="chat-ui">
-        <div class="messages-list"></div>
-        <div class="input-area">
-          <textarea class="message-input" placeholder="Type a message..."></textarea>
-          <button class="send-btn">Send</button>
-        </div>
+    return html`
+      <div class="messages">
+        ${this.messages.map(msg => html`
+          <div class="message message-${msg.role}">
+            <div class="content">${msg.content}</div>
+          </div>
+        `)}
+      </div>
+      
+      <div class="input-area">
+        <textarea
+          .value="${this.inputText}"
+          @input="${this.handleInput}"
+          @keydown="${this.handleKeydown}"
+          placeholder="Type a message..."
+          ?disabled="${this.isLoading}"
+        ></textarea>
+        <button 
+          @click="${this.send}"
+          ?disabled="${this.isLoading || !this.inputText.trim()}"
+        >
+          ${this.isLoading ? 'Loading...' : 'Send'}
+        </button>
       </div>
     `;
-    
-    this.messagesList = this.container.querySelector('.messages-list');
-    this.input = this.container.querySelector('.message-input');
-    this.sendBtn = this.container.querySelector('.send-btn');
   }
-  
-  bindEvents() {
-    this.sendBtn.addEventListener('click', () => this.send());
-    this.input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        this.send();
-      }
-    });
+
+  handleInput(e) {
+    this.inputText = e.target.value;
   }
-  
-  send() {
-    const text = this.input.value.trim();
-    if (!text) return;
-    
-    this.addMessage('user', text);
-    this.input.value = '';
-    
-    if (this.eventBus) {
-      this.eventBus.publish('message:send', { text });
+
+  handleKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      this.send();
     }
   }
-  
-  addMessage(role, content) {
-    const msgEl = document.createElement('div');
-    msgEl.className = `message message-${role}`;
-    msgEl.innerHTML = `<div class="content">${this.escapeHtml(content)}</div>`;
-    this.messagesList.appendChild(msgEl);
-    this.messagesList.scrollTop = this.messagesList.scrollHeight;
+
+  send() {
+    const text = this.inputText.trim();
+    if (!text || this.isLoading) return;
+
+    this.dispatchEvent(new CustomEvent('message-send', {
+      detail: { text },
+      bubbles: true,
+      composed: true
+    }));
+
+    this.inputText = '';
   }
-  
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+
+  addMessage(role, content) {
+    this.messages = [...this.messages, { role, content }];
+    this.updateComplete.then(() => {
+      const messages = this.shadowRoot.querySelector('.messages');
+      if (messages) messages.scrollTop = messages.scrollHeight;
+    });
   }
 }
+
+customElements.define('chat-ui', ChatUi);
 ```
 
 ---
 
 ## Styling Strategy
 
-### Global CSS (No CSS-in-JS)
+### Shadow DOM Scoping (Lit Components)
+
+UI components use **Lit's Shadow DOM** for style encapsulation:
+
+```javascript
+class ChatUi extends LitElement {
+  static styles = css`
+    /* These styles are scoped to this component only */
+    :host {
+      display: block;
+    }
+    
+    .messages {
+      /* Won't leak to parent or children */
+    }
+    
+    ::slotted(*) {
+      /* Style slotted content */
+    }
+  `;
+}
+```
+
+### Global CSS (for Layout)
+
+Global styles only for app-level layout:
 
 ```css
 /* www/styles.css */
@@ -475,86 +733,59 @@ export class ChatUI {
   padding: 0;
 }
 
-/* Layout */
+/* App Layout */
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .app {
-  display: flex;
+  display: grid;
+  grid-template-columns: 250px 1fr;
   height: 100vh;
 }
 
-/* Components */
-.chat-ui {
+.sidebar {
+  background: #f5f5f5;
+  border-right: 1px solid #ddd;
+}
+
+.main {
   display: flex;
   flex-direction: column;
-  height: 100%;
-}
-
-.chat-ui .messages-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1rem;
-}
-
-.chat-ui .message {
-  margin-bottom: 1rem;
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-}
-
-.chat-ui .message-user {
-  background: #e3f2fd;
-  margin-left: 2rem;
-}
-
-.chat-ui .message-assistant {
-  background: #f5f5f5;
-  margin-right: 2rem;
-}
-
-.chat-ui .input-area {
-  display: flex;
-  padding: 1rem;
-  border-top: 1px solid #ddd;
-}
-
-.chat-ui .message-input {
-  flex: 1;
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 0.25rem;
-  resize: none;
-  min-height: 3rem;
-}
-
-.chat-ui .send-btn {
-  margin-left: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #1976d2;
-  color: white;
-  border: none;
-  border-radius: 0.25rem;
-  cursor: pointer;
 }
 ```
 
-### Component-Specific Styles
-Components can add their own styles by injecting a `<style>` tag:
+### CSS Custom Properties (Theming)
+
+Use CSS variables for theming:
+
+```css
+/* www/styles.css */
+:root {
+  --primary-color: #1976d2;
+  --background-color: #ffffff;
+  --text-color: #333333;
+  --border-color: #dddddd;
+  --message-user-bg: #e3f2fd;
+  --message-assistant-bg: #f5f5f5;
+}
+```
+
+Components reference these variables:
 
 ```javascript
-class MyComponent {
-  render() {
-    // Add component styles
-    if (!document.getElementById('my-component-styles')) {
-      const style = document.createElement('style');
-      style.id = 'my-component-styles';
-      style.textContent = `
-        .my-component { /* styles */ }
-      `;
-      document.head.appendChild(style);
-    }
-    
-    this.container.innerHTML = `...`;
+static styles = css`
+  button {
+    background: var(--primary-color, #1976d2);
+    color: white;
   }
-}
+  
+  .message-user {
+    background: var(--message-user-bg, #e3f2fd);
+  }
+`;
 ```
 
 ---
@@ -724,13 +955,19 @@ export async function createAgent() {
 ```
 
 ### Step 5: Update UI Components
-Convert existing UI to class-based components:
+Convert existing UI to Lit HTML web components:
 ```javascript
 // Old: Functional style
 function renderChat() { ... }
 
-// New: Class-based
-class ChatUI { ... }
+// New: Lit component
+import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+
+class ChatUi extends LitElement {
+  static styles = css`...`;
+  static properties = { messages: Array };
+  render() { return html`...`; }
+}
 ```
 
 ---
@@ -769,7 +1006,12 @@ features = [
 ```
 
 ### JavaScript
-None! (except what wasm-bindgen generates)
+- **Lit HTML**: Loaded from CDN (only UI dependency)
+  ```javascript
+  import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+  ```
+- No npm packages
+- No build step for JavaScript
 
 ---
 

@@ -171,11 +171,11 @@
   </div>
 
   <script type="module">
-    import { EventBus } from '../components/core/event-bus/src/index.js';
-    import { OPFSProvider } from '../components/core/opfs-provider/src/index.js';
-    import { IndexedDBProvider } from '../components/core/indexeddb-provider/src/index.js';
-    import { MessageBridgeMain } from '../components/core/message-bridge/src/index.js';
-    import { APIClient } from '../components/core/api-client/src/index.js';
+    import { EventBus } from '../../components/core/event-bus/src/index.js';
+    import { OPFSProvider } from '../../components/core/opfs-provider/src/index.js';
+    import { IndexedDBProvider } from '../../components/core/indexeddb-provider/src/index.js';
+    import { MessageBridgeMain } from '../../components/core/message-bridge/src/index.js';
+    import { APIClient } from '../../components/core/api-client/src/index.js';
 
     // Test state
     let testResults = [];
@@ -498,14 +498,21 @@
       
       await bridge.init();
       
+      // Wait for bridge to fully initialize subscriptions
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
       let received = false;
-      bus.subscribe('bridge:message', (msg) => {
-        if (msg.event === 'worker:response') received = true;
+      bus.subscribe('worker:response', (data) => {
+        received = true;
       });
+      
+      // Wait for subscription to be active
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       bus.publish('test:send', { test: true });
       
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for message to flow through
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       bridge.terminate();
       URL.revokeObjectURL(workerUrl);
@@ -638,16 +645,25 @@
       
       await bridge.init();
       
+      // Wait for bridge to fully initialize subscriptions
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
       let ackCount = 0;
-      bus.subscribe('bridge:message', (msg) => {
-        if (msg.event === 'worker:ack') ackCount = msg.data.count;
+      bus.subscribe('worker:ack', (data) => {
+        ackCount = data.count;
       });
+      
+      // Wait for subscription to be active
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       // Send multiple messages
       bus.publish('to:worker', { msg: 1 });
+      await new Promise(resolve => setTimeout(resolve, 10));
       bus.publish('to:worker', { msg: 2 });
+      await new Promise(resolve => setTimeout(resolve, 10));
       bus.publish('to:worker', { msg: 3 });
       
+      // Wait for all messages to flow through
       await new Promise(resolve => setTimeout(resolve, 200));
       
       bridge.terminate();
@@ -690,14 +706,21 @@
       
       await bridge.init();
       
+      // Wait for bridge to fully initialize subscriptions
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
       let processed = null;
-      bus.subscribe('bridge:message', (msg) => {
-        if (msg.event === 'worker:processed') processed = msg.data;
+      bus.subscribe('worker:processed', (data) => {
+        processed = data;
       });
+      
+      // Wait for subscription to be active
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       bus.publish('send:data', JSON.parse(JSON.stringify(testData)));
       
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for message to flow through and back
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       bridge.terminate();
       URL.revokeObjectURL(workerUrl);

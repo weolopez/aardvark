@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool Store Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- js-yaml for YAML parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+  <style>
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .tool-card { transition: all 0.2s ease; }
+    .tool-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .event-log-entry { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">Tool Store Demo</h1>
+      <p class="text-gray-600">Manage tools, parse SKILL.md files, and review pending approvals</p>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="bg-white rounded-lg shadow-md p-4 mb-6 flex justify-between items-center">
+      <div class="flex items-center gap-4">
+        <div id="status-indicator" class="flex items-center gap-2">
+          <span class="w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></span>
+          <span class="text-gray-600">Initializing...</span>
+        </div>
+        <div class="text-gray-400">|</div>
+        <div class="text-gray-600">
+          Tools: <span id="tool-count" class="font-bold text-blue-600">0</span>
+        </div>
+        <div class="text-gray-400">|</div>
+        <div class="text-gray-600">
+          Pending: <span id="pending-count" class="font-bold text-orange-600">0</span>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button id="btn-refresh" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition">
+          Refresh
+        </button>
+        <button id="btn-create" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+          + New Tool
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-12 gap-6">
+      <!-- Left: Tool List -->
+      <div class="col-span-4">
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+          <div class="p-4 border-b bg-gray-50">
+            <h2 class="text-lg font-semibold text-gray-800">Available Tools</h2>
+            <input type="text" id="tool-search" placeholder="Search tools..." 
+              class="mt-2 w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div id="tool-list" class="max-h-96 overflow-y-auto p-2 space-y-2">
+            <div class="text-gray-500 text-center py-8">No tools found</div>
+          </div>
+        </div>
+
+        <!-- Pending Tools -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden mt-6">
+          <div class="p-4 border-b bg-orange-50">
+            <h2 class="text-lg font-semibold text-orange-800">Pending Approval</h2>
+          </div>
+          <div id="pending-list" class="max-h-64 overflow-y-auto p-2 space-y-2">
+            <div class="text-gray-500 text-center py-8">No pending tools</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Middle: Tool Details -->
+      <div class="col-span-5">
+        <div id="tool-detail" class="bg-white rounded-lg shadow-md p-6 min-h-[500px]">
+          <div class="text-center text-gray-500 mt-20">
+            <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+            </svg>
+            <p>Select a tool to view details</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Event Log -->
+      <div class="col-span-3">
+        <div class="bg-gray-900 rounded-lg shadow-md p-4 h-[600px] flex flex-col">
+          <h2 class="text-lg font-semibold text-gray-300 mb-4">Event Log</h2>
+          <div id="event-log" class="flex-1 overflow-y-auto space-y-2 font-mono text-sm">
+            <div class="text-gray-500">Waiting for events...</div>
+          </div>
+          <button id="btn-clear-log" class="mt-4 px-4 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 transition text-sm">
+            Clear Log
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Tool Modal -->
+  <div id="create-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full m-4 max-h-[90vh] overflow-y-auto">
+      <div class="p-6 border-b">
+        <h2 class="text-2xl font-bold text-gray-800">Create New Tool</h2>
+        <p class="text-gray-600 mt-1">Define a new tool using SKILL.md format</p>
+      </div>
+      <div class="p-6">
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">SKILL.md Content</label>
+          <textarea id="new-tool-content" rows="15" class="w-full px-3 py-2 border rounded font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="---
+name: my-tool
+description: What this tool does
+allowed-tools: &quot;read, write&quot;
+version: 1.0.0
+---
+
+# My Tool
+
+## Purpose
+Describe what this tool does.
+
+## Instructions
+1. Step one
+2. Step two
+
+## Example
+Input: `{ &quot;param&quot;: &quot;value&quot; }`
+Output: `{ &quot;result&quot;: &quot;success&quot; }`"></textarea>
+        </div>
+        <div class="flex gap-3">
+          <button id="btn-save-tool" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+            Create Tool
+          </button>
+          <button id="btn-queue-tool" class="flex-1 px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 transition">
+            Add to Queue
+          </button>
+          <button id="btn-cancel-create" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Approval Modal -->
+  <div id="approval-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full m-4 max-h-[90vh] overflow-y-auto">
+      <div class="p-6 border-b bg-orange-50">
+        <h2 class="text-2xl font-bold text-orange-800">Review Pending Tool</h2>
+        <p class="text-orange-600 mt-1">Review the SKILL.md content before approving</p>
+      </div>
+      <div class="p-6">
+        <div id="approval-content" class="mb-6 bg-gray-50 p-4 rounded font-mono text-sm overflow-x-auto">
+        </div>
+        <div class="flex gap-3">
+          <button id="btn-approve" class="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
+            Approve
+          </button>
+          <button id="btn-reject" class="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
+            Reject
+          </button>
+          <button id="btn-cancel-approval" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ToolStore } from '../../../../components/storage/tool-store/src/index.js';
+    import { FileStore } from '../../../../components/storage/file-store/src/index.js';
+    import { EventBus } from '../../../../components/core/event-bus/src/index.js';
+
+    // State
+    const toolStore = new ToolStore();
+    let currentRepo = 'demo-repo';
+    let selectedTool = null;
+    let selectedPending = null;
+    let isRefreshing = false;
+    let pendingRefresh = false;
+
+    // DOM Elements
+    const toolListEl = document.getElementById('tool-list');
+    const pendingListEl = document.getElementById('pending-list');
+    const toolDetailEl = document.getElementById('tool-detail');
+    const eventLogEl = document.getElementById('event-log');
+    const toolCountEl = document.getElementById('tool-count');
+    const pendingCountEl = document.getElementById('pending-count');
+    const statusIndicator = document.getElementById('status-indicator');
+
+    // Initialize
+    async function init() {
+      try {
+        // Create demo repo if needed
+        const fileStore = new FileStore();
+        await fileStore.initialize();
+        
+        try {
+          await fileStore.createRepo(currentRepo);
+          logEvent('Created demo repository', 'info');
+        } catch (e) {
+          // Repo might already exist
+        }
+
+        // Initialize tool store
+        await toolStore.initialize();
+        
+        // Setup event listeners
+        setupEventListeners();
+        
+        // Subscribe to events (use debounced refresh to prevent loops)
+        let refreshTimeout = null;
+        const debouncedRefresh = () => {
+          if (refreshTimeout) clearTimeout(refreshTimeout);
+          refreshTimeout = setTimeout(refreshUI, 500);
+        };
+        
+        toolStore.eventBus.subscribe('tool:discovered', (data) => {
+          logEvent(`Tool discovered: ${data.tool.name}`, 'success');
+          // Don't refresh on discovery to avoid loops - scanTools already discovered it
+        });
+        
+        toolStore.eventBus.subscribe('tool:created', (data) => {
+          logEvent(`Tool created: ${data.tool.name}`, 'success');
+          debouncedRefresh();
+        });
+        
+        toolStore.eventBus.subscribe('tool:deleted', (data) => {
+          logEvent(`Tool deleted: ${data.name}`, 'warning');
+          debouncedRefresh();
+        });
+        
+        toolStore.eventBus.subscribe('tool:pending', (data) => {
+          logEvent(`Tool pending: ${data.name} (requested by ${data.requestedBy})`, 'warning');
+          debouncedRefresh();
+        });
+        
+        toolStore.eventBus.subscribe('tool:approved', (data) => {
+          logEvent(`Tool approved: ${data.name}`, 'success');
+          debouncedRefresh();
+        });
+        
+        toolStore.eventBus.subscribe('tool:rejected', (data) => {
+          logEvent(`Tool rejected: ${data.name}`, 'error');
+          debouncedRefresh();
+        });
+
+        // Create sample tools
+        await createSampleTools();
+        
+        // Initial refresh
+        await refreshUI();
+        
+        // Update status
+        statusIndicator.innerHTML = `
+          <span class="w-3 h-3 bg-green-500 rounded-full"></span>
+          <span class="text-green-600 font-medium">Ready</span>
+        `;
+        
+        logEvent('Tool Store initialized', 'success');
+      } catch (e) {
+        console.error('Initialization error:', e);
+        statusIndicator.innerHTML = `
+          <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+          <span class="text-red-600">Error: ${e.message}</span>
+        `;
+        logEvent(`Initialization failed: ${e.message}`, 'error');
+      }
+    }
+
+    // Create sample tools
+    async function createSampleTools() {
+      const sampleTools = [
+        {
+          name: 'count-lines',
+          content: `---
+name: count-lines
+description: Count the number of lines in a file
+allowed-tools: "read"
+version: 1.0.0
+author: Demo
+---
+
+# Count Lines Tool
+
+## Purpose
+Count lines in a file.
+
+## Instructions
+1. Read the file
+2. Split by newlines
+3. Count and return
+
+## Example
+
+Input: \`{ "path": "src/main.rs" }\`
+Output: \`{ "count": 42 }\``
+        },
+        {
+          name: 'find-imports',
+          content: `---
+name: find-imports
+description: Find all import statements in a file
+allowed-tools: "read, grep"
+version: 1.0.0
+author: Demo
+---
+
+# Find Imports Tool
+
+## Purpose
+Find all import or use statements in source files.
+
+## Instructions
+1. Read the file or search directory
+2. Find lines matching import patterns
+3. Return list of imports
+
+## Example
+
+Input: \`{ "path": "src/main.rs" }\`
+Output: \`{ "imports": ["use std::io;", "use std::fs::File;"] }\``
+        }
+      ];
+
+      for (const sample of sampleTools) {
+        try {
+          await toolStore.createTool(currentRepo, sample.name, sample.content);
+        } catch (e) {
+          // Tool might already exist
+        }
+      }
+
+      // Add a pending tool
+      try {
+        await toolStore.addPendingTool({
+          name: 'custom-analyzer',
+          description: 'A custom code analyzer tool',
+          skillMdContent: `---
+name: custom-analyzer
+description: Analyze code for potential issues
+allowed-tools: "read, grep, find"
+version: 1.0.0
+---
+
+# Custom Analyzer
+
+## Purpose
+Analyze code for common issues.
+
+## Instructions
+1. Scan files
+2. Check for patterns
+3. Report issues
+
+## Example
+
+Input: \`{ "path": "src" }\`
+Output: \`{ "issues": [] }\``,
+          requestedBy: 'llm',
+          reason: 'User requested code analysis'
+        });
+      } catch (e) {
+        // Already pending
+      }
+    }
+
+    // Refresh UI with debouncing
+    async function refreshUI() {
+      // Prevent concurrent refreshes
+      if (isRefreshing) {
+        pendingRefresh = true;
+        return;
+      }
+      
+      isRefreshing = true;
+      pendingRefresh = false;
+      
+      try {
+        // Scan tools (without triggering events to avoid loops)
+        const tools = await toolStore.scanTools(currentRepo);
+        renderToolList(tools);
+        toolCountEl.textContent = tools.length;
+
+        // Get pending tools
+        const pending = await toolStore.listPendingTools('pending');
+        renderPendingList(pending);
+        pendingCountEl.textContent = pending.length;
+      } catch (e) {
+        console.error('Refresh error:', e);
+        logEvent(`Refresh failed: ${e.message}`, 'error');
+      } finally {
+        isRefreshing = false;
+        
+        // If a refresh was requested while we were busy, do one more
+        if (pendingRefresh) {
+          setTimeout(refreshUI, 100);
+        }
+      }
+    }
+
+    // Render tool list
+    function renderToolList(tools) {
+      if (tools.length === 0) {
+        toolListEl.innerHTML = '<div class="text-gray-500 text-center py-8">No tools found</div>';
+        return;
+      }
+
+      toolListEl.innerHTML = tools.map(tool => `
+        <div class="tool-card bg-gray-50 p-3 rounded cursor-pointer hover:bg-gray-100 ${selectedTool?.name === tool.name ? 'ring-2 ring-blue-500' : ''}"
+             onclick="selectTool('${tool.name}')">
+          <div class="font-medium text-gray-800">${tool.name}</div>
+          <div class="text-sm text-gray-600 truncate">${tool.description}</div>
+          <div class="text-xs text-gray-400 mt-1">v${tool.version} • ${tool.allowedTools.length} allowed tools</div>
+        </div>
+      `).join('');
+    }
+
+    // Render pending list
+    function renderPendingList(pending) {
+      if (pending.length === 0) {
+        pendingListEl.innerHTML = '<div class="text-gray-500 text-center py-8">No pending tools</div>';
+        return;
+      }
+
+      pendingListEl.innerHTML = pending.map(tool => `
+        <div class="bg-orange-50 p-3 rounded cursor-pointer hover:bg-orange-100 border border-orange-200 ${selectedPending?.toolId === tool.toolId ? 'ring-2 ring-orange-500' : ''}"
+             onclick="selectPending('${tool.toolId}')">
+          <div class="font-medium text-orange-800">${tool.name}</div>
+          <div class="text-sm text-orange-600 truncate">${tool.description}</div>
+          <div class="text-xs text-orange-400 mt-1">Requested by ${tool.requestedBy}</div>
+        </div>
+      `).join('');
+    }
+
+    // Select tool
+    window.selectTool = async (name) => {
+      const tools = await toolStore.listTools(currentRepo);
+      selectedTool = tools.find(t => t.name === name);
+      selectedPending = null;
+      
+      if (selectedTool) {
+        renderToolDetail(selectedTool);
+        renderToolList(tools);
+      }
+    };
+
+    // Select pending
+    window.selectPending = async (toolId) => {
+      selectedPending = await toolStore.getPendingTool(toolId);
+      selectedTool = null;
+      
+      if (selectedPending) {
+        renderPendingDetail(selectedPending);
+        const pending = await toolStore.listPendingTools('pending');
+        renderPendingList(pending);
+      }
+    };
+
+    // Render tool detail
+    function renderToolDetail(tool) {
+      toolDetailEl.innerHTML = `
+        <div class="fade-in">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <h2 class="text-2xl font-bold text-gray-800">${tool.name}</h2>
+              <p class="text-gray-600">${tool.description}</p>
+            </div>
+            <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+              v${tool.version}
+            </span>
+          </div>
+          
+          <div class="space-y-4">
+            <div>
+              <h3 class="font-semibold text-gray-700 mb-2">Allowed Tools</h3>
+              <div class="flex gap-2 flex-wrap">
+                ${tool.allowedTools.length > 0 
+                  ? tool.allowedTools.map(t => `<span class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-sm">${t}</span>`).join('')
+                  : '<span class="text-gray-400 italic">None specified</span>'
+                }
+              </div>
+            </div>
+            
+            <div>
+              <h3 class="font-semibold text-gray-700 mb-2">Parameters</h3>
+              <pre class="bg-gray-100 p-3 rounded text-sm overflow-x-auto">${JSON.stringify(tool.parameters, null, 2)}</pre>
+            </div>
+            
+            <div>
+              <h3 class="font-semibold text-gray-700 mb-2">Instructions</h3>
+              <div class="bg-gray-50 p-4 rounded border prose prose-sm max-w-none">
+                ${tool.instructions.split('\n').map(line => {
+                  if (line.startsWith('# ')) return `<h1 class="text-xl font-bold mb-2">${line.substring(2)}</h1>`;
+                  if (line.startsWith('## ')) return `<h2 class="text-lg font-semibold mt-4 mb-2">${line.substring(3)}</h2>`;
+                  if (line.startsWith('```')) return `<pre class="bg-gray-800 text-gray-100 p-2 rounded my-2 overflow-x-auto"><code>`;
+                  if (line === '```') return `</code></pre>`;
+                  return `<p class="mb-2">${line}</p>`;
+                }).join('')}
+              </div>
+            </div>
+            
+            <div class="pt-4 border-t">
+              <button onclick="deleteTool('${tool.name}')" class="px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 transition">
+                Delete Tool
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Render pending detail
+    function renderPendingDetail(tool) {
+      toolDetailEl.innerHTML = `
+        <div class="fade-in">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <h2 class="text-2xl font-bold text-orange-800">${tool.name}</h2>
+              <p class="text-orange-600">${tool.description}</p>
+            </div>
+            <span class="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-medium">
+              Pending
+            </span>
+          </div>
+          
+          <div class="space-y-4">
+            <div class="bg-gray-50 p-3 rounded">
+              <div class="text-sm text-gray-600"><span class="font-medium">Requested by:</span> ${tool.requestedBy}</div>
+              <div class="text-sm text-gray-600"><span class="font-medium">Created:</span> ${new Date(tool.created).toLocaleString()}</div>
+              ${tool.reason ? `<div class="text-sm text-gray-600"><span class="font-medium">Reason:</span> ${tool.reason}</div>` : ''}
+            </div>
+            
+            <div>
+              <h3 class="font-semibold text-gray-700 mb-2">SKILL.md Content</h3>
+              <pre class="bg-gray-100 p-3 rounded text-sm overflow-x-auto max-h-64 overflow-y-auto">${tool.skillMdContent}</pre>
+            </div>
+            
+            <div class="flex gap-3 pt-4 border-t">
+              <button onclick="approvePending('${tool.toolId}')" class="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
+                Approve
+              </button>
+              <button onclick="rejectPending('${tool.toolId}')" class="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Delete tool
+    window.deleteTool = async (name) => {
+      if (confirm(`Are you sure you want to delete "${name}"?`)) {
+        try {
+          await toolStore.deleteTool(currentRepo, name);
+          selectedTool = null;
+          toolDetailEl.innerHTML = `
+            <div class="text-center text-gray-500 mt-20">
+              <p>Tool deleted</p>
+            </div>
+          `;
+        } catch (e) {
+          logEvent(`Delete failed: ${e.message}`, 'error');
+        }
+      }
+    };
+
+    // Approve pending
+    window.approvePending = async (toolId) => {
+      try {
+        await toolStore.approveTool(toolId, currentRepo);
+        selectedPending = null;
+        toolDetailEl.innerHTML = `
+          <div class="text-center text-gray-500 mt-20">
+            <p>Tool approved and created</p>
+          </div>
+        `;
+      } catch (e) {
+        logEvent(`Approval failed: ${e.message}`, 'error');
+      }
+    };
+
+    // Reject pending
+    window.rejectPending = async (toolId) => {
+      const reason = prompt('Reason for rejection (optional):');
+      try {
+        await toolStore.rejectTool(toolId, reason || '');
+        selectedPending = null;
+        toolDetailEl.innerHTML = `
+          <div class="text-center text-gray-500 mt-20">
+            <p>Tool rejected</p>
+          </div>
+        `;
+      } catch (e) {
+        logEvent(`Rejection failed: ${e.message}`, 'error');
+      }
+    };
+
+    // Setup event listeners
+    function setupEventListeners() {
+      // Refresh button
+      document.getElementById('btn-refresh').addEventListener('click', refreshUI);
+      
+      // Create tool modal
+      document.getElementById('btn-create').addEventListener('click', () => {
+        document.getElementById('create-modal').classList.remove('hidden');
+        document.getElementById('create-modal').classList.add('flex');
+      });
+      
+      document.getElementById('btn-cancel-create').addEventListener('click', closeCreateModal);
+      
+      document.getElementById('btn-save-tool').addEventListener('click', async () => {
+        const content = document.getElementById('new-tool-content').value;
+        if (!content.trim()) return;
+        
+        try {
+          // Parse to get name
+          const { parseSkillMd } = await import('../../../../components/storage/tool-store/src/index.js');
+          const parsed = parseSkillMd(content);
+          await toolStore.createTool(currentRepo, parsed.frontmatter.name, content);
+          closeCreateModal();
+          document.getElementById('new-tool-content').value = '';
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      });
+      
+      document.getElementById('btn-queue-tool').addEventListener('click', async () => {
+        const content = document.getElementById('new-tool-content').value;
+        if (!content.trim()) return;
+        
+        try {
+          const { parseSkillMd } = await import('../../../../components/storage/tool-store/src/index.js');
+          const parsed = parseSkillMd(content);
+          await toolStore.addPendingTool({
+            name: parsed.frontmatter.name,
+            description: parsed.frontmatter.description,
+            skillMdContent: content,
+            requestedBy: 'user'
+          });
+          closeCreateModal();
+          document.getElementById('new-tool-content').value = '';
+        } catch (e) {
+          alert(`Error: ${e.message}`);
+        }
+      });
+      
+      // Search
+      document.getElementById('tool-search').addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        const cards = toolListEl.querySelectorAll('.tool-card');
+        cards.forEach(card => {
+          const text = card.textContent.toLowerCase();
+          card.style.display = text.includes(query) ? '' : 'none';
+        });
+      });
+      
+      // Clear log
+      document.getElementById('btn-clear-log').addEventListener('click', () => {
+        eventLogEl.innerHTML = '<div class="text-gray-500">Log cleared</div>';
+      });
+    }
+
+    function closeCreateModal() {
+      document.getElementById('create-modal').classList.add('hidden');
+      document.getElementById('create-modal').classList.remove('flex');
+    }
+
+    // Log event
+    function logEvent(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = 'event-log-entry';
+      
+      const timestamp = new Date().toLocaleTimeString();
+      let colorClass = 'text-gray-400';
+      
+      if (type === 'success') colorClass = 'text-green-400';
+      else if (type === 'error') colorClass = 'text-red-400';
+      else if (type === 'warning') colorClass = 'text-yellow-400';
+      
+      entry.innerHTML = `<span class="text-gray-600">[${timestamp}]</span> <span class="${colorClass}">${message}</span>`;
+      
+      if (eventLogEl.children[0]?.textContent === 'Waiting for events...' || 
+          eventLogEl.children[0]?.textContent === 'Log cleared') {
+        eventLogEl.innerHTML = '';
+      }
+      
+      eventLogEl.appendChild(entry);
+      eventLogEl.scrollTop = eventLogEl.scrollHeight;
+    }
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

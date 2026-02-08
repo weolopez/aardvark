@@ -117,6 +117,24 @@ export class OPFSProvider {
   }
 
   /**
+   * Delete a directory and all its contents
+   * @param {string} path - Directory path to delete
+   * @returns {Promise<void>}
+   */
+  async deleteDir(path) {
+    await this.delete(path, { recursive: true });
+  }
+
+  /**
+   * Delete a file
+   * @param {string} path - File path to delete
+   * @returns {Promise<void>}
+   */
+  async deleteFile(path) {
+    await this.delete(path, { recursive: false });
+  }
+
+  /**
    * Walk directory tree
    * @param {string} path - Starting path
    * @param {Function} callback - Callback for each entry

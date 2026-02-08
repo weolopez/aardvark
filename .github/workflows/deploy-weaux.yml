@@ -32,7 +32,7 @@ jobs:
             Branch: ${{ github.ref_name }}
             
             🔗 Session Store Demo:
-            https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/components/storage/session-store/demo/index.html
+            https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/www/components/storage/session-store/index.html
             
             🔗 File Store Demo:
-            https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/components/storage/file-store/demo/index.html
+            https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/www/components/storage/file-store/index.html

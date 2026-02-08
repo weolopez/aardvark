@@ -17,14 +17,10 @@ The Tool Store manages tool discovery from OPFS `.tools/` directories, SKILL.md 
 
 ## Installation
 
-```bash
-npm install @aardvark/tool-store
-```
-
-## Usage
+Import directly as an ES module:
 
 ```javascript
-import { ToolStore } from '@aardvark/tool-store';
+import { ToolStore } from './src/index.js';
 
 const toolStore = new ToolStore();
 await toolStore.initialize();
@@ -188,7 +184,7 @@ npm run demo
 
 ## Dependencies
 
-- `@aardvark/file-store` - File operations
-- `@aardvark/event-bus` - Event publishing
-- `@aardvark/indexeddb-provider` - Pending tools storage
-- `js-yaml` (CDN) - YAML parsing
+- File Store component - File operations
+- Event Bus component - Event publishing
+- IndexedDB Provider component - Pending tools storage
+- js-yaml (CDN) - YAML parsing

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History Store Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">History Store Unit Tests</h1>
+      <p class="text-gray-600 mt-2">Testing execution recording, querying, and statistics</p>
+    </header>
+
+    <!-- Test Summary -->
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <span class="text-gray-600">Total Tests:</span>
+          <span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-green-600">Passed:</span>
+          <span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-red-600">Failed:</span>
+          <span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span>
+        </div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200 text-gray-700">
+          Running...
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Results -->
+    <div id="test-results" class="space-y-3">
+      <!-- Tests will be inserted here -->
+    </div>
+
+    <!-- Console Output -->
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold text-gray-300 mb-4">Console Output</h2>
+      <div id="console-output" class="font-mono text-sm text-green-400 space-y-1 max-h-64 overflow-y-auto">
+        <div class="text-gray-500">Test execution started...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { HistoryStore, calculateStats, calculateToolUsage, exportToJsonl } from '../../src/index.js';
+
+    // Test Framework
+    class TestRunner {
+      constructor() {
+        this.tests = [];
+        this.results = [];
+        this.passCount = 0;
+        this.failCount = 0;
+      }
+
+      test(name, fn) {
+        this.tests.push({ name, fn });
+      }
+
+      async runAll() {
+        for (const test of this.tests) {
+          await this.runTest(test);
+        }
+        this.showSummary();
+      }
+
+      async runTest(test) {
+        const resultEl = this.createResultElement(test.name);
+        
+        try {
+          await test.fn();
+          this.passCount++;
+          this.markPassed(resultEl);
+          this.log(`✓ ${test.name}`, 'success');
+        } catch (error) {
+          this.failCount++;
+          this.markFailed(resultEl, error);
+          this.log(`✗ ${test.name}: ${error.message}`, 'error');
+        }
+      }
+
+      createResultElement(name) {
+        const container = document.getElementById('test-results');
+        const el = document.createElement('div');
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-yellow-400';
+        el.innerHTML = `
+          <div class="flex items-center">
+            <span class="mr-3 text-xl">⏳</span>
+            <span class="font-medium">${name}</span>
+          </div>
+          <div class="test-error mt-2 text-sm text-red-600 hidden"></div>
+        `;
+        container.appendChild(el);
+        return el;
+      }
+
+      markPassed(el) {
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-green-500';
+        el.querySelector('span:first-child').textContent = '✓';
+      }
+
+      markFailed(el, error) {
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-red-500';
+        el.querySelector('span:first-child').textContent = '✗';
+        const errorEl = el.querySelector('.test-error');
+        errorEl.textContent = error.message;
+        errorEl.classList.remove('hidden');
+      }
+
+      log(message, type = 'info') {
+        const consoleEl = document.getElementById('console-output');
+        const line = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        if (type === 'error') {
+          line.className = 'text-red-400';
+        } else if (type === 'success') {
+          line.className = 'text-green-400';
+        } else {
+          line.className = 'text-gray-400';
+        }
+        
+        line.textContent = `[${timestamp}] ${message}`;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      showSummary() {
+        document.getElementById('total-count').textContent = this.tests.length;
+        document.getElementById('pass-count').textContent = this.passCount;
+        document.getElementById('fail-count').textContent = this.failCount;
+        
+        const badge = document.getElementById('status-badge');
+        if (this.failCount === 0) {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+          badge.textContent = 'All Tests Passed!';
+        } else {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+          badge.textContent = `${this.failCount} Tests Failed`;
+        }
+        
+        this.log(`\nTest run complete: ${this.passCount}/${this.tests.length} passed`, 
+          this.failCount === 0 ? 'success' : 'error');
+
+        // Report to parent window
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
+      }
+    }
+
+    // Assertions
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(`${message || 'Assertion failed'}: expected ${expected}, got ${actual}`);
+      }
+    }
+
+    function assertTrue(value, message) {
+      if (!value) {
+        throw new Error(message || 'Expected true but got false');
+      }
+    }
+
+    function assertNotNull(value, message) {
+      if (value === null || value === undefined) {
+        throw new Error(message || 'Expected non-null value');
+      }
+    }
+
+    function assertGreaterThan(actual, expected, message) {
+      if (!(actual > expected)) {
+        throw new Error(`${message || 'Assertion failed'}: expected ${actual} > ${expected}`);
+      }
+    }
+
+    // Test Suite
+    const runner = new TestRunner();
+
+    // Initialize HistoryStore
+    let historyStore;
+
+    runner.test('Initialize HistoryStore', async () => {
+      historyStore = new HistoryStore();
+      await historyStore.initialize();
+      assertTrue(historyStore.initialized, 'Should be initialized');
+    });
+
+    runner.test('Record and retrieve execution', async () => {
+      const record = {
+        sessionId: 'test-session-1',
+        nodeId: 'node-1',
+        toolName: 'read',
+        arguments: { path: 'src/main.js' },
+        result: { success: true, output: 'content' },
+        startedAt: Date.now() - 1000,
+        completedAt: Date.now()
+      };
+
+      const executionId = await historyStore.recordExecution(record);
+      assertNotNull(executionId, 'Should return executionId');
+      assertTrue(executionId.length > 0, 'ExecutionId should not be empty');
+
+      const retrieved = await historyStore.getExecution(executionId);
+      assertNotNull(retrieved, 'Should retrieve execution');
+      assertEqual(retrieved.toolName, 'read', 'Tool name should match');
+      assertEqual(retrieved.sessionId, 'test-session-1', 'Session ID should match');
+      assertEqual(retrieved.status, 'completed', 'Status should be completed');
+    });
+
+    runner.test('Record execution start and complete', async () => {
+      const executionId = await historyStore.recordStart(
+        'test-session-2',
+        'node-2',
+        'write',
+        { path: 'test.txt', content: 'hello' }
+      );
+
+      assertNotNull(executionId, 'Should return executionId');
+
+      // Verify it's in running state
+      const running = await historyStore.getExecution(executionId);
+      assertEqual(running.status, 'running', 'Status should be running');
+
+      // Complete the execution
+      await historyStore.recordComplete(executionId, {
+        success: true,
+        output: 'File written'
+      });
+
+      const completed = await historyStore.getExecution(executionId);
+      assertEqual(completed.status, 'completed', 'Status should be completed');
+      assertTrue(completed.duration >= 0, 'Duration should be set');
+    });
+
+    runner.test('Record failed execution', async () => {
+      const record = {
+        sessionId: 'test-session-3',
+        nodeId: 'node-3',
+        toolName: 'read',
+        arguments: { path: 'nonexistent.js' },
+        result: { success: false, error: 'File not found' },
+        startedAt: Date.now() - 500,
+        completedAt: Date.now()
+      };
+
+      const executionId = await historyStore.recordExecution(record);
+      const retrieved = await historyStore.getExecution(executionId);
+      
+      assertEqual(retrieved.status, 'failed', 'Status should be failed');
+      assertEqual(retrieved.result.error, 'File not found', 'Error should be preserved');
+    });
+
+    runner.test('Query executions by session', async () => {
+      // Add multiple executions for the same session
+      for (let i = 0; i < 3; i++) {
+        await historyStore.recordExecution({
+          sessionId: 'query-session',
+          nodeId: `node-${i}`,
+          toolName: 'read',
+          arguments: { path: `file${i}.js` },
+          result: { success: true },
+          startedAt: Date.now() - 1000 + i,
+          completedAt: Date.now() + i
+        });
+      }
+
+      const executions = await historyStore.getExecutionsBySession('query-session');
+      assertTrue(executions.length >= 3, 'Should have at least 3 executions');
+      
+      for (const exec of executions) {
+        assertEqual(exec.sessionId, 'query-session', 'All should have correct session');
+      }
+    });
+
+    runner.test('Query executions by tool', async () => {
+      const executions = await historyStore.getExecutionsByTool('read');
+      assertTrue(executions.length > 0, 'Should have read tool executions');
+      
+      for (const exec of executions) {
+        assertEqual(exec.toolName, 'read', 'All should be read tool');
+      }
+    });
+
+    runner.test('Get executions with filters', async () => {
+      // Add executions with different statuses
+      await historyStore.recordExecution({
+        sessionId: 'filter-session',
+        nodeId: 'node-1',
+        toolName: 'test-tool',
+        arguments: {},
+        result: { success: true },
+        startedAt: Date.now() - 1000,
+        completedAt: Date.now()
+      });
+
+      const completedOnly = await historyStore.getExecutions({
+        status: 'completed',
+        limit: 10
+      });
+
+      assertTrue(completedOnly.length > 0, 'Should have completed executions');
+      
+      for (const exec of completedOnly) {
+        assertEqual(exec.status, 'completed', 'Should only have completed');
+      }
+    });
+
+    runner.test('Calculate statistics', async () => {
+      const stats = await historyStore.getStats();
+      
+      assertTrue(stats.totalExecutions > 0, 'Should have total executions');
+      assertTrue(stats.totalDuration >= 0, 'Total duration should be >= 0');
+      assertTrue(stats.uniqueTools > 0, 'Should have unique tools');
+      assertTrue(stats.dateRange.from <= stats.dateRange.to, 'Date range should be valid');
+    });
+
+    runner.test('Get tool statistics', async () => {
+      const stats = await historyStore.getToolStats('read');
+      
+      assertEqual(stats.toolName, 'read', 'Tool name should match');
+      assertTrue(stats.executionCount > 0, 'Should have execution count');
+      assertTrue(stats.averageDuration >= 0, 'Average duration should be >= 0');
+    });
+
+    runner.test('Get popular tools', async () => {
+      const popular = await historyStore.getPopularTools(5);
+      
+      assertTrue(popular.length > 0, 'Should have popular tools');
+      
+      if (popular.length > 0) {
+        assertTrue(popular[0].count > 0, 'Most popular should have count > 0');
+        assertTrue(popular[0].percentage >= 0, 'Should have percentage');
+      }
+    });
+
+    runner.test('Get session stats', async () => {
+      const stats = await historyStore.getSessionStats('test-session-1');
+      
+      assertEqual(stats.sessionId, 'test-session-1', 'Session ID should match');
+      assertTrue(stats.totalExecutions > 0, 'Should have executions');
+      assertTrue(stats.toolBreakdown instanceof Map, 'Tool breakdown should be Map');
+    });
+
+    runner.test('Get execution timeline', async () => {
+      const timeline = await historyStore.getExecutionTimeline('test-session-1');
+      
+      assertTrue(timeline.length > 0, 'Should have timeline entries');
+      
+      for (const entry of timeline) {
+        assertTrue(entry.timestamp > 0, 'Should have timestamp');
+        assertTrue(entry.duration >= 0, 'Should have duration');
+        assertTrue(['success', 'failure'].includes(entry.status), 'Status should be valid');
+      }
+    });
+
+    // Aggregation Tests
+    runner.test('Calculate stats with aggregations', () => {
+      const mockExecutions = [
+        { toolName: 'read', status: 'completed', startedAt: 1000, duration: 100, result: { success: true } },
+        { toolName: 'read', status: 'completed', startedAt: 2000, duration: 200, result: { success: true } },
+        { toolName: 'write', status: 'failed', startedAt: 3000, duration: 50, result: { success: false } },
+        { toolName: 'write', status: 'completed', startedAt: 4000, duration: 150, result: { success: true } }
+      ];
+
+      const stats = calculateStats(mockExecutions);
+      
+      assertEqual(stats.totalExecutions, 4, 'Should have 4 executions');
+      assertEqual(stats.successfulExecutions, 3, 'Should have 3 successful');
+      assertEqual(stats.failedExecutions, 1, 'Should have 1 failed');
+      assertEqual(stats.uniqueTools, 2, 'Should have 2 unique tools');
+      assertEqual(stats.averageDuration, 125, 'Average should be 125ms');
+    });
+
+    runner.test('Calculate tool usage', () => {
+      const mockExecutions = [
+        { toolName: 'read' },
+        { toolName: 'read' },
+        { toolName: 'write' }
+      ];
+
+      const usage = calculateToolUsage(mockExecutions);
+      
+      assertEqual(usage.length, 2, 'Should have 2 tools');
+      assertEqual(usage[0].toolName, 'read', 'Read should be most popular');
+      assertEqual(usage[0].count, 2, 'Read should have count 2');
+      assertEqual(usage[0].percentage, 67, 'Read should be 67%');
+    });
+
+    runner.test('Export to JSONL', () => {
+      const mockExecutions = [
+        { executionId: '1', toolName: 'read' },
+        { executionId: '2', toolName: 'write' }
+      ];
+
+      const jsonl = exportToJsonl(mockExecutions);
+      const lines = jsonl.split('\n');
+      
+      assertEqual(lines.length, 2, 'Should have 2 lines');
+      
+      const parsed = JSON.parse(lines[0]);
+      assertEqual(parsed.executionId, '1', 'Should parse correctly');
+    });
+
+    runner.test('Delete old executions', async () => {
+      // Add an old execution
+      await historyStore.recordExecution({
+        sessionId: 'old-session',
+        nodeId: 'node-old',
+        toolName: 'old-tool',
+        arguments: {},
+        result: { success: true },
+        startedAt: Date.now() - 86400000 * 30, // 30 days ago
+        completedAt: Date.now() - 86400000 * 30 + 1000
+      });
+
+      const beforeCount = (await historyStore.getExecutions()).length;
+      
+      // Delete older than 7 days
+      const deleted = await historyStore.deleteOldExecutions(Date.now() - 86400000 * 7);
+      
+      assertTrue(deleted > 0, 'Should have deleted old executions');
+      
+      const afterCount = (await historyStore.getExecutions()).length;
+      assertTrue(afterCount < beforeCount, 'Count should decrease');
+    });
+
+    // Run all tests
+    runner.runAll();
+  </script>
+</body>
+</html>

@@ -12,12 +12,38 @@
       <h1 class="text-3xl font-bold text-gray-800">Session Store Unit Tests</h1>
     </header>
 
+    <!-- Test Summary -->
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <span class="text-gray-600">Total Tests:</span>
+          <span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-green-600">Passed:</span>
+          <span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-red-600">Failed:</span>
+          <span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span>
+        </div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200 text-gray-700">
+          Running...
+        </div>
+      </div>
+    </div>
+
     <div id="test-results" class="space-y-3"></div>
   </div>
 
   <script type="module">
     import { SessionStore } from '../../src/index.js';
     import { IndexedDBProvider } from '../../../../core/indexeddb-provider/src/index.js';
+
+    // Test tracking
+    let passCount = 0;
+    let failCount = 0;
+    const tests = [];
 
     // Simple Test Runner
     async function runTest(name, fn) {
@@ -32,10 +58,38 @@
         el.className = 'p-4 rounded bg-white shadow mb-2 border-l-4 border-green-500';
         el.textContent = `✓ ${name}`;
         console.log(`PASS: ${name}`);
+        passCount++;
       } catch (e) {
         el.className = 'p-4 rounded bg-white shadow mb-2 border-l-4 border-red-500';
         el.innerHTML = `✗ ${name}<br><small class="text-red-600">${e.message}</small>`;
         console.error(`FAIL: ${name}`, e);
+        failCount++;
+      }
+    }
+
+    function showSummary() {
+      const total = passCount + failCount;
+      document.getElementById('total-count').textContent = total;
+      document.getElementById('pass-count').textContent = passCount;
+      document.getElementById('fail-count').textContent = failCount;
+      
+      const badge = document.getElementById('status-badge');
+      if (failCount === 0) {
+        badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+        badge.textContent = 'All Tests Passed!';
+      } else {
+        badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+        badge.textContent = `${failCount} Tests Failed`;
+      }
+      
+      // Report to parent window
+      if (window.parent !== window) {
+        window.parent.postMessage({
+          type: 'test-complete',
+          total: total,
+          passed: passCount,
+          failed: failCount
+        }, '*');
       }
     }
 
@@ -97,6 +151,8 @@
          assert(results.length === 1, 'Found banana');
       });
 
+      // Show summary after all tests complete
+      showSummary();
     })();
   </script>
 </body>

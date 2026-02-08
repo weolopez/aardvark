@@ -79,7 +79,7 @@
         </div>
       </div>
       
-      <div class="grid grid-cols-4 gap-4 mb-4">
+      <div class="grid grid-cols-5 gap-4 mb-4">
         <div class="text-center">
           <div id="summary-total" class="text-3xl font-bold text-gray-800">0</div>
           <div class="text-sm text-gray-600">Total Tests</div>
@@ -95,6 +95,12 @@
         <div class="text-center">
           <div id="summary-time" class="text-3xl font-bold text-blue-600">0ms</div>
           <div class="text-sm text-gray-600">Total Time</div>
+        </div>
+        <div class="text-center">
+          <div id="status-badge" class="inline-block px-4 py-2 rounded-full text-sm font-semibold bg-gray-200 text-gray-700 mt-1">
+            Running...
+          </div>
+          <div class="text-sm text-gray-600 mt-1">Status</div>
         </div>
       </div>
 
@@ -440,6 +446,31 @@
       
       isRunning = false;
       log('Integration tests complete!', 'success');
+      
+      // Update status badge and report completion
+      updateSummary();
+      const badge = document.getElementById('status-badge');
+      const total = testResults.length;
+      const failed = testResults.filter(r => !r.passed).length;
+      const passed = testResults.filter(r => r.passed).length;
+      
+      if (failed === 0) {
+        badge.className = 'inline-block px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800 mt-1';
+        badge.textContent = 'All Tests Passed!';
+      } else {
+        badge.className = 'inline-block px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800 mt-1';
+        badge.textContent = `${failed} Tests Failed`;
+      }
+      
+      // Report to parent window
+      if (window.parent !== window) {
+        window.parent.postMessage({
+          type: 'test-complete',
+          total: total,
+          passed: passed,
+          failed: failed
+        }, '*');
+      }
     }
 
     // Update summary
@@ -1017,7 +1048,12 @@
     // Initialize
     displayBrowserInfo();
     checkComponents();
-    log('Integration test suite loaded. Click "Run All Tests" to begin.', 'info');
+    log('Integration test suite loaded. Starting tests automatically...', 'info');
+    
+    // Auto-run tests after a short delay to allow components to initialize
+    setTimeout(() => {
+      runIntegrationTests();
+    }, 500);
   </script>
 </body>
 </html>

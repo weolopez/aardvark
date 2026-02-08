@@ -20,7 +20,24 @@
 
     <!-- Summary -->
     <div id="summary" class="mt-8 bg-white rounded-lg shadow-md p-6">
-      <div class="flex justify-between items-center">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <span class="text-gray-600">Total Tests:</span>
+          <span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-green-600">Passed:</span>
+          <span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-red-600">Failed:</span>
+          <span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span>
+        </div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200 text-gray-700">
+          Running...
+        </div>
+      </div>
+      <div class="flex justify-between items-center border-t pt-4">
         <span class="text-gray-600">Status:</span>
         <span id="status" class="text-lg font-semibold text-gray-700">Running...</span>
       </div>
@@ -205,12 +222,23 @@
     // Show summary
     const status = document.getElementById('status');
     const total = passCount + failCount;
+    
+    // Update standard test result elements
+    document.getElementById('total-count').textContent = total;
+    document.getElementById('pass-count').textContent = passCount;
+    document.getElementById('fail-count').textContent = failCount;
+    
+    const badge = document.getElementById('status-badge');
     if (failCount === 0) {
       status.className = 'text-lg font-semibold text-green-600';
       status.textContent = `✓ All ${passCount} tests passed`;
+      badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+      badge.textContent = 'All Tests Passed!';
     } else {
       status.className = 'text-lg font-semibold text-red-600';
       status.textContent = `✗ ${failCount} of ${total} tests failed`;
+      badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+      badge.textContent = `${failCount} Tests Failed`;
     }
     
     // Report to parent window

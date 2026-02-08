@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool Store Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- js-yaml for YAML parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">Tool Store Unit Tests</h1>
+      <p class="text-gray-600 mt-2">Testing tool discovery, SKILL.md parsing, and approval workflow</p>
+    </header>
+
+    <!-- Test Summary -->
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <span class="text-gray-600">Total Tests:</span>
+          <span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-green-600">Passed:</span>
+          <span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-red-600">Failed:</span>
+          <span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span>
+        </div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200 text-gray-700">
+          Running...
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Results -->
+    <div id="test-results" class="space-y-3">
+      <!-- Tests will be inserted here -->
+    </div>
+
+    <!-- Console Output -->
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold text-gray-300 mb-4">Console Output</h2>
+      <div id="console-output" class="font-mono text-sm text-green-400 space-y-1 max-h-64 overflow-y-auto">
+        <div class="text-gray-500">Test execution started...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ToolStore, parseSkillMd, extractParametersSchema, validateToolDefinition, validatePendingToolInput } from '../../src/index.js';
+
+    // Test Framework
+    class TestRunner {
+      constructor() {
+        this.tests = [];
+        this.results = [];
+        this.passCount = 0;
+        this.failCount = 0;
+      }
+
+      test(name, fn) {
+        this.tests.push({ name, fn });
+      }
+
+      async runAll() {
+        for (const test of this.tests) {
+          await this.runTest(test);
+        }
+        this.showSummary();
+      }
+
+      async runTest(test) {
+        const resultEl = this.createResultElement(test.name);
+        
+        try {
+          await test.fn();
+          this.passCount++;
+          this.markPassed(resultEl);
+          this.log(`✓ ${test.name}`, 'success');
+        } catch (error) {
+          this.failCount++;
+          this.markFailed(resultEl, error);
+          this.log(`✗ ${test.name}: ${error.message}`, 'error');
+        }
+      }
+
+      createResultElement(name) {
+        const container = document.getElementById('test-results');
+        const el = document.createElement('div');
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-yellow-400';
+        el.innerHTML = `
+          <div class="flex items-center">
+            <span class="mr-3 text-xl">⏳</span>
+            <span class="font-medium">${name}</span>
+          </div>
+          <div class="test-error mt-2 text-sm text-red-600 hidden"></div>
+        `;
+        container.appendChild(el);
+        return el;
+      }
+
+      markPassed(el) {
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-green-500';
+        el.querySelector('span:first-child').textContent = '✓';
+      }
+
+      markFailed(el, error) {
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-red-500';
+        el.querySelector('span:first-child').textContent = '✗';
+        const errorEl = el.querySelector('.test-error');
+        errorEl.textContent = error.message;
+        errorEl.classList.remove('hidden');
+      }
+
+      log(message, type = 'info') {
+        const consoleEl = document.getElementById('console-output');
+        const line = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        if (type === 'error') {
+          line.className = 'text-red-400';
+        } else if (type === 'success') {
+          line.className = 'text-green-400';
+        } else {
+          line.className = 'text-gray-400';
+        }
+        
+        line.textContent = `[${timestamp}] ${message}`;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      showSummary() {
+        document.getElementById('total-count').textContent = this.tests.length;
+        document.getElementById('pass-count').textContent = this.passCount;
+        document.getElementById('fail-count').textContent = this.failCount;
+        
+        const badge = document.getElementById('status-badge');
+        if (this.failCount === 0) {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+          badge.textContent = 'All Tests Passed!';
+        } else {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+          badge.textContent = `${this.failCount} Tests Failed`;
+        }
+        
+        this.log(`\nTest run complete: ${this.passCount}/${this.tests.length} passed`, 
+          this.failCount === 0 ? 'success' : 'error');
+
+        // Report to parent window
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
+      }
+    }
+
+    // Assertions
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(`${message || 'Assertion failed'}: expected ${expected}, got ${actual}`);
+      }
+    }
+
+    function assertTrue(value, message) {
+      if (!value) {
+        throw new Error(message || 'Expected true but got false');
+      }
+    }
+
+    function assertFalse(value, message) {
+      if (value) {
+        throw new Error(message || 'Expected false but got true');
+      }
+    }
+
+    function assertNotNull(value, message) {
+      if (value === null || value === undefined) {
+        throw new Error(message || 'Expected non-null value');
+      }
+    }
+
+    // Test Suite
+    const runner = new TestRunner();
+
+    // SKILL.md Parsing Tests
+    runner.test('Parse valid SKILL.md with all fields', () => {
+      const content = `---
+name: test-tool
+description: A test tool
+allowed-tools: "read, write"
+version: 1.0.0
+author: Test
+---
+
+# Test Tool
+
+Instructions here.`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.name, 'test-tool', 'Name should match');
+      assertEqual(parsed.frontmatter.description, 'A test tool', 'Description should match');
+      assertEqual(parsed.frontmatter.allowedTools, 'read, write', 'Allowed tools should match');
+      assertEqual(parsed.frontmatter.version, '1.0.0', 'Version should match');
+      assertEqual(parsed.frontmatter.author, 'Test', 'Author should match');
+      assertTrue(parsed.instructions.includes('# Test Tool'), 'Instructions should be parsed');
+    });
+
+    runner.test('Parse SKILL.md with minimal fields', () => {
+      const content = `---
+name: minimal-tool
+description: Minimal tool
+---
+
+Instructions.`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.name, 'minimal-tool', 'Name should match');
+      assertEqual(parsed.frontmatter.description, 'Minimal tool', 'Description should match');
+      assertEqual(parsed.frontmatter.version, '1.0.0', 'Default version should be 1.0.0');
+      assertEqual(parsed.frontmatter.author, 'Unknown', 'Default author should be Unknown');
+    });
+
+    runner.test('Throw error on missing frontmatter', () => {
+      const content = `No frontmatter here`;
+      
+      try {
+        parseSkillMd(content);
+        throw new Error('Should have thrown');
+      } catch (e) {
+        assertTrue(e.message.includes('frontmatter'), 'Should mention frontmatter');
+      }
+    });
+
+    runner.test('Throw error on missing required fields', () => {
+      const content = `---
+description: Missing name
+---
+
+Instructions.`;
+      
+      try {
+        parseSkillMd(content);
+        throw new Error('Should have thrown');
+      } catch (e) {
+        assertTrue(e.message.includes('name'), 'Should mention missing name');
+      }
+    });
+
+    runner.test('Extract parameters from example', () => {
+      const instructions = `
+## Example
+
+Input: \`{ "path": "src/main.rs", "lines": 10 }\`
+      `;
+
+      const schema = extractParametersSchema(instructions);
+      
+      assertEqual(schema.type, 'object', 'Schema type should be object');
+      assertTrue(schema.properties.path, 'Should have path property');
+      assertTrue(schema.properties.lines, 'Should have lines property');
+      assertTrue(schema.required.includes('path'), 'Path should be required');
+      assertTrue(schema.required.includes('lines'), 'Lines should be required');
+    });
+
+    runner.test('Extract empty schema when no example', () => {
+      const instructions = `Just some instructions without an example.`;
+      
+      const schema = extractParametersSchema(instructions);
+      
+      assertEqual(schema.type, 'object', 'Schema type should be object');
+      assertEqual(Object.keys(schema.properties).length, 0, 'Should have no properties');
+    });
+
+    // Validation Tests
+    runner.test('Validate valid tool definition', () => {
+      const def = {
+        name: 'valid-tool',
+        description: 'A valid tool',
+        repo: 'myproject',
+        skillMdPath: '/.tools/valid-tool/SKILL.md',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'File path' }
+          },
+          required: ['path']
+        },
+        allowedTools: ['read'],
+        version: '1.0.0'
+      };
+
+      const validation = validateToolDefinition(def);
+      
+      assertTrue(validation.valid, 'Should be valid');
+      assertEqual(validation.errors.length, 0, 'Should have no errors');
+    });
+
+    runner.test('Invalidate tool with invalid name', () => {
+      const def = {
+        name: 'Invalid Tool Name',
+        description: 'A tool',
+        repo: 'myproject',
+        skillMdPath: '/.tools/invalid/SKILL.md'
+      };
+
+      const validation = validateToolDefinition(def);
+      
+      assertFalse(validation.valid, 'Should be invalid');
+      assertTrue(validation.errors.some(e => e.field === 'name'), 'Should have name error');
+    });
+
+    runner.test('Invalidate tool with missing required fields', () => {
+      const def = {
+        name: 'test'
+      };
+
+      const validation = validateToolDefinition(def);
+      
+      assertFalse(validation.valid, 'Should be invalid');
+      assertTrue(validation.errors.length > 0, 'Should have errors');
+    });
+
+    runner.test('Validate pending tool input', () => {
+      const input = {
+        name: 'pending-tool',
+        description: 'A pending tool',
+        skillMdContent: `---
+name: pending-tool
+description: A pending tool
+---
+
+Instructions.`,
+        requestedBy: 'llm'
+      };
+
+      const validation = validatePendingToolInput(input);
+      
+      assertTrue(validation.valid, 'Should be valid');
+    });
+
+    runner.test('Invalidate pending tool with bad requestedBy', () => {
+      const input = {
+        name: 'test',
+        description: 'Test',
+        skillMdContent: `---
+name: test
+description: Test
+---
+
+Instructions.`,
+        requestedBy: 'invalid'
+      };
+
+      const validation = validatePendingToolInput(input);
+      
+      assertFalse(validation.valid, 'Should be invalid');
+      assertTrue(validation.errors.some(e => e.field === 'requestedBy'), 'Should have requestedBy error');
+    });
+
+    // Integration Tests (require FileStore)
+    runner.test('Initialize ToolStore', async () => {
+      const toolStore = new ToolStore();
+      await toolStore.initialize();
+      
+      assertTrue(toolStore.initialized, 'Should be initialized');
+    });
+
+    runner.test('Add and retrieve pending tool', async () => {
+      const toolStore = new ToolStore();
+      await toolStore.initialize();
+      
+      const toolId = await toolStore.addPendingTool({
+        name: 'test-pending',
+        description: 'A test pending tool',
+        skillMdContent: `---
+name: test-pending
+description: A test pending tool
+---
+
+Instructions.`,
+        requestedBy: 'user'
+      });
+      
+      assertNotNull(toolId, 'Should return toolId');
+      
+      const pending = await toolStore.getPendingTool(toolId);
+      assertNotNull(pending, 'Should retrieve pending tool');
+      assertEqual(pending.name, 'test-pending', 'Name should match');
+      assertEqual(pending.status, 'pending', 'Status should be pending');
+    });
+
+    runner.test('List pending tools', async () => {
+      const toolStore = new ToolStore();
+      await toolStore.initialize();
+      
+      // Add a few pending tools
+      await toolStore.addPendingTool({
+        name: 'tool-1',
+        description: 'Tool 1',
+        skillMdContent: `---
+name: tool-1
+description: Tool 1
+---
+
+Instructions.`,
+        requestedBy: 'llm'
+      });
+      
+      await toolStore.addPendingTool({
+        name: 'tool-2',
+        description: 'Tool 2',
+        skillMdContent: `---
+name: tool-2
+description: Tool 2
+---
+
+Instructions.`,
+        requestedBy: 'user'
+      });
+      
+      const pending = await toolStore.listPendingTools();
+      assertTrue(pending.length >= 2, 'Should have at least 2 pending tools');
+    });
+
+    runner.test('Registry operations', async () => {
+      const toolStore = new ToolStore();
+      await toolStore.initialize();
+      
+      // Initially registry should be empty or have scanned tools
+      const registry = toolStore.getRegistry();
+      assertNotNull(registry, 'Should return registry');
+      assertTrue(registry instanceof Map, 'Registry should be a Map');
+    });
+
+    // Run all tests
+    runner.runAll();
+  </script>
+</body>
+</html>

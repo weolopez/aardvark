@@ -30,7 +30,8 @@ export class SessionStore {
    * @param {EventBus} [options.eventBus]
    */
   constructor(options = {}) {
-    this.db = options.db || new IndexedDBProvider();
+    const dbName = options.dbName || 'aardvark-sessions';
+    this.db = options.db || new IndexedDBProvider(dbName);
     this.eventBus = options.eventBus || new EventBus();
     this.treeOps = new TreeOperations(this.db);
     this.searchOps = new SearchOperations(this.db);
@@ -41,32 +42,31 @@ export class SessionStore {
    * Initialize the store and database schema
    * @param {string} [dbName='aardvark-sessions']
    */
-  async initialize(dbName = 'aardvark-sessions') {
+  async initialize() {
     if (this.initialized) return;
 
-    const schema = {
-      version: 1,
-      stores: {
-        sessions: {
-          keyPath: 'sessionId',
-          indexes: [
-            { name: 'created', keyPath: 'created' },
-            { name: 'modified', keyPath: 'modified' },
-            { name: 'repo', keyPath: 'repo' }
-          ]
-        },
-        nodes: {
-          keyPath: 'id',
-          indexes: [
-            { name: 'sessionId', keyPath: 'sessionId' },
-            { name: 'parentId', keyPath: 'parentId' },
-            { name: 'timestamp', keyPath: 'timestamp' }
-          ]
-        }
+    const stores = [
+      {
+        name: 'sessions',
+        keyPath: 'sessionId',
+        indexes: [
+          { name: 'created', keyPath: 'created' },
+          { name: 'modified', keyPath: 'modified' },
+          { name: 'repo', keyPath: 'repo' }
+        ]
+      },
+      {
+        name: 'nodes',
+        keyPath: 'id',
+        indexes: [
+          { name: 'sessionId', keyPath: 'sessionId' },
+          { name: 'parentId', keyPath: 'parentId' },
+          { name: 'timestamp', keyPath: 'timestamp' }
+        ]
       }
-    };
+    ];
 
-    await this.db.initialize(dbName, schema);
+    await this.db.initialize(stores);
     this.initialized = true;
   }
 
@@ -302,3 +302,5 @@ export class SessionStore {
     return this.searchOps.searchNodes(sessionId, query);
   }
 }
+
+export default SessionStore;

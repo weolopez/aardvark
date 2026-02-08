@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SKILL.md Parser Unit Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- js-yaml for YAML parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">SKILL.md Parser Unit Tests</h1>
+      <p class="text-gray-600 mt-2">Testing YAML frontmatter and markdown parsing</p>
+    </header>
+
+    <!-- Test Summary -->
+    <div id="summary" class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <span class="text-gray-600">Total Tests:</span>
+          <span id="total-count" class="text-2xl font-bold text-gray-800 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-green-600">Passed:</span>
+          <span id="pass-count" class="text-2xl font-bold text-green-600 ml-2">0</span>
+        </div>
+        <div>
+          <span class="text-red-600">Failed:</span>
+          <span id="fail-count" class="text-2xl font-bold text-red-600 ml-2">0</span>
+        </div>
+        <div id="status-badge" class="px-4 py-2 rounded-full text-sm font-semibold bg-gray-200 text-gray-700">
+          Running...
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Results -->
+    <div id="test-results" class="space-y-3">
+      <!-- Tests will be inserted here -->
+    </div>
+
+    <!-- Console Output -->
+    <div class="mt-8 bg-gray-900 rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold text-gray-300 mb-4">Console Output</h2>
+      <div id="console-output" class="font-mono text-sm text-green-400 space-y-1 max-h-64 overflow-y-auto">
+        <div class="text-gray-500">Test execution started...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { parseSkillMd, extractParametersSchema, generateSchemaFromExample } from '../../src/index.js';
+
+    // Test Framework
+    class TestRunner {
+      constructor() {
+        this.tests = [];
+        this.results = [];
+        this.passCount = 0;
+        this.failCount = 0;
+      }
+
+      test(name, fn) {
+        this.tests.push({ name, fn });
+      }
+
+      async runAll() {
+        for (const test of this.tests) {
+          await this.runTest(test);
+        }
+        this.showSummary();
+      }
+
+      async runTest(test) {
+        const resultEl = this.createResultElement(test.name);
+        
+        try {
+          await test.fn();
+          this.passCount++;
+          this.markPassed(resultEl);
+          this.log(`✓ ${test.name}`, 'success');
+        } catch (error) {
+          this.failCount++;
+          this.markFailed(resultEl, error);
+          this.log(`✗ ${test.name}: ${error.message}`, 'error');
+        }
+      }
+
+      createResultElement(name) {
+        const container = document.getElementById('test-results');
+        const el = document.createElement('div');
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-yellow-400';
+        el.innerHTML = `
+          <div class="flex items-center">
+            <span class="mr-3 text-xl">⏳</span>
+            <span class="font-medium">${name}</span>
+          </div>
+          <div class="test-error mt-2 text-sm text-red-600 hidden"></div>
+        `;
+        container.appendChild(el);
+        return el;
+      }
+
+      markPassed(el) {
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-green-500';
+        el.querySelector('span:first-child').textContent = '✓';
+      }
+
+      markFailed(el, error) {
+        el.className = 'bg-white rounded-lg shadow p-4 border-l-4 border-red-500';
+        el.querySelector('span:first-child').textContent = '✗';
+        const errorEl = el.querySelector('.test-error');
+        errorEl.textContent = error.message;
+        errorEl.classList.remove('hidden');
+      }
+
+      log(message, type = 'info') {
+        const consoleEl = document.getElementById('console-output');
+        const line = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        if (type === 'error') {
+          line.className = 'text-red-400';
+        } else if (type === 'success') {
+          line.className = 'text-green-400';
+        } else {
+          line.className = 'text-gray-400';
+        }
+        
+        line.textContent = `[${timestamp}] ${message}`;
+        consoleEl.appendChild(line);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+
+      showSummary() {
+        document.getElementById('total-count').textContent = this.tests.length;
+        document.getElementById('pass-count').textContent = this.passCount;
+        document.getElementById('fail-count').textContent = this.failCount;
+        
+        const badge = document.getElementById('status-badge');
+        if (this.failCount === 0) {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-green-100 text-green-800';
+          badge.textContent = 'All Tests Passed!';
+        } else {
+          badge.className = 'px-4 py-2 rounded-full text-sm font-semibold bg-red-100 text-red-800';
+          badge.textContent = `${this.failCount} Tests Failed`;
+        }
+        
+        this.log(`\nTest run complete: ${this.passCount}/${this.tests.length} passed`, 
+          this.failCount === 0 ? 'success' : 'error');
+
+        // Report to parent window
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'test-complete',
+            total: this.tests.length,
+            passed: this.passCount,
+            failed: this.failCount
+          }, '*');
+        }
+      }
+    }
+
+    // Assertions
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error(`${message || 'Assertion failed'}: expected ${expected}, got ${actual}`);
+      }
+    }
+
+    function assertTrue(value, message) {
+      if (!value) {
+        throw new Error(message || 'Expected true but got false');
+      }
+    }
+
+    function assertNotNull(value, message) {
+      if (value === null || value === undefined) {
+        throw new Error(message || 'Expected non-null value');
+      }
+    }
+
+    function assertIncludes(haystack, needle, message) {
+      if (!haystack.includes(needle)) {
+        throw new Error(`${message || 'Expected string to include'}: "${needle}"`);
+      }
+    }
+
+    // Test Suite
+    const runner = new TestRunner();
+
+    // Basic Parsing Tests
+    runner.test('Parse complete SKILL.md', () => {
+      const content = `---
+name: count-lines
+description: Count lines in a file
+allowed-tools: "read"
+version: 1.0.0
+author: Claude
+---
+
+# Count Lines Tool
+
+## Purpose
+Count the number of lines in a specified file.
+
+## Usage
+Call with a file path to get the line count.
+
+## Instructions
+
+1. Read the file at the specified path
+2. Split content by newlines
+3. Return the count
+
+## Example
+
+Input: \`{ "path": "src/main.rs" }\`
+Output: \`42\``;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.name, 'count-lines', 'Name should be parsed');
+      assertEqual(parsed.frontmatter.description, 'Count lines in a file', 'Description should be parsed');
+      assertEqual(parsed.frontmatter.allowedTools, 'read', 'Allowed tools should be parsed');
+      assertEqual(parsed.frontmatter.version, '1.0.0', 'Version should be parsed');
+      assertEqual(parsed.frontmatter.author, 'Claude', 'Author should be parsed');
+      
+      assertTrue(parsed.instructions.includes('# Count Lines Tool'), 'Should include header');
+      assertTrue(parsed.instructions.includes('## Purpose'), 'Should include Purpose section');
+      assertTrue(parsed.instructions.includes('## Instructions'), 'Should include Instructions section');
+    });
+
+    runner.test('Parse SKILL.md with minimal frontmatter', () => {
+      const content = `---
+name: simple-tool
+description: A simple tool
+---
+
+Just some instructions.`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.name, 'simple-tool', 'Name should be parsed');
+      assertEqual(parsed.frontmatter.description, 'A simple tool', 'Description should be parsed');
+      assertEqual(parsed.frontmatter.version, '1.0.0', 'Should have default version');
+      assertEqual(parsed.frontmatter.author, 'Unknown', 'Should have default author');
+      assertEqual(parsed.frontmatter.allowedTools, '', 'Should have empty allowed tools');
+    });
+
+    runner.test('Parse with hyphenated field names', () => {
+      const content = `---
+name: hyphen-tool
+description: Testing hyphenated names
+allowed-tools: "read, write, grep"
+version: 2.0.0
+---
+
+Instructions.`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.allowedTools, 'read, write, grep', 'Should parse allowed-tools field');
+    });
+
+    runner.test('Parse with multiline description', () => {
+      const content = `---
+name: multiline-tool
+description: |
+  This is a multiline
+  description that spans
+  multiple lines
+---
+
+Instructions.`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertTrue(parsed.frontmatter.description.includes('multiline'), 'Should parse multiline description');
+      assertTrue(parsed.frontmatter.description.includes('multiple lines'), 'Should include all lines');
+    });
+
+    // Error Cases
+    runner.test('Error on missing frontmatter delimiter', () => {
+      const content = `name: no-frontmatter
+description: Missing delimiters
+
+Instructions.`;
+      
+      try {
+        parseSkillMd(content);
+        throw new Error('Should have thrown');
+      } catch (e) {
+        assertTrue(e.message.includes('frontmatter'), 'Should mention frontmatter error');
+        assertTrue(e.message.includes('delimiter'), 'Should mention delimiter');
+      }
+    });
+
+    runner.test('Error on missing name field', () => {
+      const content = `---
+description: Missing name field
+---
+
+Instructions.`;
+      
+      try {
+        parseSkillMd(content);
+        throw new Error('Should have thrown');
+      } catch (e) {
+        assertTrue(e.message.includes('name'), 'Should mention missing name');
+      }
+    });
+
+    runner.test('Error on missing description field', () => {
+      const content = `---
+name: missing-description
+---
+
+Instructions.`;
+      
+      try {
+        parseSkillMd(content);
+        throw new Error('Should have thrown');
+      } catch (e) {
+        assertTrue(e.message.includes('description'), 'Should mention missing description');
+      }
+    });
+
+    runner.test('Error on invalid YAML', () => {
+      const content = `---
+name: bad-yaml
+: invalid yaml here
+---
+
+Instructions.`;
+      
+      try {
+        parseSkillMd(content);
+        throw new Error('Should have thrown');
+      } catch (e) {
+        assertTrue(e.message.includes('YAML'), 'Should mention YAML error');
+      }
+    });
+
+    // Parameter Schema Extraction
+    runner.test('Extract schema from JSON example', () => {
+      const instructions = `
+## Example
+
+Input: \`{ "path": "src/main.rs", "count": 5 }\`
+
+Output: \`{ "result": "success" }\`
+      `;
+
+      const schema = extractParametersSchema(instructions);
+      
+      assertEqual(schema.type, 'object', 'Schema type should be object');
+      assertTrue(schema.properties.path, 'Should have path property');
+      assertTrue(schema.properties.count, 'Should have count property');
+      assertEqual(schema.properties.path.type, 'string', 'Path should be string type');
+      assertEqual(schema.properties.count.type, 'number', 'Count should be number type');
+      assertTrue(schema.required.includes('path'), 'Path should be required');
+      assertTrue(schema.required.includes('count'), 'Count should be required');
+    });
+
+    runner.test('Extract schema from code block', () => {
+      const instructions = `
+## Parameters
+
+\`\`\`json
+{
+  "type": "object",
+  "properties": {
+    "filename": { "type": "string", "description": "Name of file" },
+    "lines": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["filename"]
+}
+\`\`\`
+      `;
+
+      const schema = extractParametersSchema(instructions);
+      
+      assertEqual(schema.type, 'object', 'Should extract schema type');
+      assertTrue(schema.properties.filename, 'Should have filename property');
+      assertEqual(schema.properties.filename.type, 'string', 'Filename should be string');
+    });
+
+    runner.test('Return empty schema when no example', () => {
+      const instructions = `
+## Purpose
+
+This tool does something but has no example.
+
+## Instructions
+
+Just call it.
+      `;
+
+      const schema = extractParametersSchema(instructions);
+      
+      assertEqual(schema.type, 'object', 'Should have object type');
+      assertEqual(Object.keys(schema.properties).length, 0, 'Should have no properties');
+      assertEqual(schema.required.length, 0, 'Should have no required fields');
+    });
+
+    runner.test('Handle nested objects in examples', () => {
+      const instructions = `
+## Example
+
+Input: \`{ "config": { "enabled": true }, "items": ["a", "b"] }\`
+      `;
+
+      const schema = extractParametersSchema(instructions);
+      
+      assertTrue(schema.properties.config, 'Should have config property');
+      assertTrue(schema.properties.items, 'Should have items property');
+      assertEqual(schema.properties.config.type, 'object', 'Config should be object type');
+      assertEqual(schema.properties.items.type, 'array', 'Items should be array type');
+    });
+
+    // Schema Generation
+    runner.test('Generate schema from example object', () => {
+      const example = {
+        path: 'src/main.rs',
+        count: 42,
+        enabled: true,
+        tags: ['a', 'b', 'c']
+      };
+
+      const schema = generateSchemaFromExample(example);
+      
+      assertEqual(schema.type, 'object', 'Should be object type');
+      assertEqual(schema.properties.path.type, 'string', 'Path should be string');
+      assertEqual(schema.properties.count.type, 'number', 'Count should be number');
+      assertEqual(schema.properties.enabled.type, 'boolean', 'Enabled should be boolean');
+      assertEqual(schema.properties.tags.type, 'array', 'Tags should be array');
+      assertEqual(schema.properties.tags.items.type, 'string', 'Tags items should be string');
+      assertEqual(schema.required.length, 4, 'All fields should be required');
+    });
+
+    runner.test('Generate schema from empty object', () => {
+      const example = {};
+
+      const schema = generateSchemaFromExample(example);
+      
+      assertEqual(schema.type, 'object', 'Should be object type');
+      assertEqual(Object.keys(schema.properties).length, 0, 'Should have no properties');
+    });
+
+    // Edge Cases
+    runner.test('Handle empty instructions', () => {
+      const content = `---
+name: empty-instructions
+description: Tool with no real instructions
+---
+
+`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.name, 'empty-instructions', 'Name should be parsed');
+      assertEqual(parsed.instructions, '', 'Instructions should be empty string');
+    });
+
+    runner.test('Handle extra whitespace in frontmatter', () => {
+      const content = `---
+
+name: whitespace-tool
+
+  description: Tool with extra whitespace
+
+---
+
+Instructions.`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.name, 'whitespace-tool', 'Name should be trimmed');
+      assertTrue(parsed.frontmatter.description.includes('extra whitespace'), 'Description should be parsed');
+    });
+
+    runner.test('Parse with special characters in values', () => {
+      const content = `---
+name: special-chars
+description: "Tool with: special chars & symbols!"
+version: "1.0.0-beta.1"
+---
+
+Instructions.`;
+
+      const parsed = parseSkillMd(content);
+      
+      assertEqual(parsed.frontmatter.name, 'special-chars', 'Name should be parsed');
+      assertTrue(parsed.frontmatter.description.includes('special chars'), 'Description should be parsed');
+      assertTrue(parsed.frontmatter.version.includes('beta'), 'Version should be parsed');
+    });
+
+    // Run all tests
+    runner.runAll();
+  </script>
+</body>
+</html>

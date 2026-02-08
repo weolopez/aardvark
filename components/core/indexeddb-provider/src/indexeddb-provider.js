@@ -133,6 +133,48 @@ export class IndexedDBProvider {
   }
 
   /**
+   * Add a value to store (fails if key exists)
+   * @param {string} store - Store name
+   * @param {any} value - Value to store (must include key if keyPath is set)
+   * @returns {Promise<void>}
+   */
+  async add(store, value) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([store], 'readwrite');
+      const objectStore = transaction.objectStore(store);
+      const request = objectStore.add(value);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const key = request.result;
+        this._notifyListeners(store, key, value);
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * Put a value to store (adds or updates)
+   * @param {string} store - Store name
+   * @param {any} value - Value to store (must include key if keyPath is set)
+   * @returns {Promise<void>}
+   */
+  async put(store, value) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([store], 'readwrite');
+      const objectStore = transaction.objectStore(store);
+      const request = objectStore.put(value);
+      
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const key = request.result;
+        this._notifyListeners(store, key, value);
+        resolve();
+      };
+    });
+  }
+
+  /**
    * Delete a value from store
    * @param {string} store - Store name
    * @param {string} key - Key to delete

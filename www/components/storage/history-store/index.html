@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History Store Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .stat-card { transition: all 0.2s ease; }
+    .stat-card:hover { transform: translateY(-2px); }
+    .timeline-item { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">History Store Demo</h1>
+      <p class="text-gray-600">Track tool executions, view statistics, and analyze performance</p>
+    </header>
+
+    <!-- Stats Overview -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="stat-card bg-white rounded-lg shadow-md p-4">
+        <div class="text-gray-500 text-sm">Total Executions</div>
+        <div id="stat-total" class="text-3xl font-bold text-blue-600">0</div>
+      </div>
+      <div class="stat-card bg-white rounded-lg shadow-md p-4">
+        <div class="text-gray-500 text-sm">Success Rate</div>
+        <div id="stat-success-rate" class="text-3xl font-bold text-green-600">0%</div>
+      </div>
+      <div class="stat-card bg-white rounded-lg shadow-md p-4">
+        <div class="text-gray-500 text-sm">Avg Duration</div>
+        <div id="stat-avg-duration" class="text-3xl font-bold text-purple-600">0ms</div>
+      </div>
+      <div class="stat-card bg-white rounded-lg shadow-md p-4">
+        <div class="text-gray-500 text-sm">Unique Tools</div>
+        <div id="stat-unique-tools" class="text-3xl font-bold text-orange-600">0</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-12 gap-6">
+      <!-- Left: Controls & Filters -->
+      <div class="col-span-3">
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Generate Test Data</h2>
+          <button id="btn-generate" class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition mb-2">
+            Generate Sample Executions
+          </button>
+          <button id="btn-clear" class="w-full px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 transition">
+            Clear All History
+          </button>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-4">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Filters</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">Session</label>
+              <select id="filter-session" class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">All Sessions</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">Tool</label>
+              <select id="filter-tool" class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">All Tools</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-600 mb-1">Status</label>
+              <select id="filter-status" class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">All Statuses</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="running">Running</option>
+              </select>
+            </div>
+            <button id="btn-apply-filters" class="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition">
+              Apply Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Middle: Execution List -->
+      <div class="col-span-5">
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+          <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+            <h2 class="text-lg font-semibold text-gray-800">Recent Executions</h2>
+            <span id="execution-count" class="text-sm text-gray-500">0 total</span>
+          </div>
+          <div id="execution-list" class="max-h-96 overflow-y-auto">
+            <div class="text-gray-500 text-center py-8">No executions recorded</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Charts & Details -->
+      <div class="col-span-4 space-y-6">
+        <!-- Tool Usage Chart -->
+        <div class="bg-white rounded-lg shadow-md p-4">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Tool Usage</h2>
+          <canvas id="tool-usage-chart" height="200"></canvas>
+        </div>
+
+        <!-- Execution Timeline -->
+        <div class="bg-white rounded-lg shadow-md p-4">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Timeline</h2>
+          <div id="timeline-chart-container">
+            <canvas id="timeline-chart" height="150"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execution Detail Modal -->
+    <div id="detail-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full m-4 max-h-[90vh] overflow-y-auto">
+        <div class="p-6 border-b bg-gray-50">
+          <h2 class="text-2xl font-bold text-gray-800">Execution Details</h2>
+        </div>
+        <div id="detail-content" class="p-6">
+          <!-- Content populated dynamically -->
+        </div>
+        <div class="p-6 border-t bg-gray-50">
+          <button id="btn-close-detail" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { HistoryStore, calculateStats, calculateToolUsage } from '../../../../components/storage/history-store/src/index.js';
+    import { EventBus } from '../../../../components/core/event-bus/src/index.js';
+
+    // State
+    const historyStore = new HistoryStore();
+    let toolUsageChart = null;
+    let timelineChart = null;
+
+    // DOM Elements
+    const executionListEl = document.getElementById('execution-list');
+    const filterSessionEl = document.getElementById('filter-session');
+    const filterToolEl = document.getElementById('filter-tool');
+    const filterStatusEl = document.getElementById('filter-status');
+
+    // Initialize
+    async function init() {
+      try {
+        await historyStore.initialize();
+        
+        setupEventListeners();
+        setupEventSubscriptions();
+        
+        // Generate initial data
+        await generateSampleData();
+        
+        await refreshUI();
+        
+        console.log('History Store demo initialized');
+      } catch (e) {
+        console.error('Initialization error:', e);
+        alert(`Initialization failed: ${e.message}`);
+      }
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+      document.getElementById('btn-generate').addEventListener('click', async () => {
+        await generateSampleData();
+        await refreshUI();
+      });
+
+      document.getElementById('btn-clear').addEventListener('click', async () => {
+        if (confirm('Clear all history?')) {
+          await historyStore.clearHistory();
+          await refreshUI();
+        }
+      });
+
+      document.getElementById('btn-apply-filters').addEventListener('click', refreshUI);
+      
+      document.getElementById('btn-close-detail').addEventListener('click', () => {
+        document.getElementById('detail-modal').classList.add('hidden');
+        document.getElementById('detail-modal').classList.remove('flex');
+      });
+    }
+
+    // Setup event subscriptions
+    function setupEventSubscriptions() {
+      historyStore.eventBus.subscribe('execution:started', (data) => {
+        console.log('Execution started:', data.toolName);
+      });
+
+      historyStore.eventBus.subscribe('execution:completed', (data) => {
+        console.log('Execution completed:', data.toolName, data.duration + 'ms');
+      });
+
+      historyStore.eventBus.subscribe('execution:failed', (data) => {
+        console.log('Execution failed:', data.toolName, data.error);
+      });
+    }
+
+    // Generate sample data
+    async function generateSampleData() {
+      const tools = ['read', 'write', 'edit', 'ls', 'grep', 'find'];
+      const sessions = ['session-1', 'session-2', 'session-3'];
+      
+      for (let i = 0; i < 50; i++) {
+        const tool = tools[Math.floor(Math.random() * tools.length)];
+        const session = sessions[Math.floor(Math.random() * sessions.length)];
+        const success = Math.random() > 0.1; // 90% success rate
+        const duration = Math.floor(Math.random() * 500) + 50;
+        
+        await historyStore.recordExecution({
+          sessionId: session,
+          nodeId: `node-${i}`,
+          toolName: tool,
+          arguments: { path: `src/file${i}.js` },
+          result: success 
+            ? { success: true, output: 'Success' }
+            : { success: false, error: 'Error occurred' },
+          startedAt: Date.now() - Math.floor(Math.random() * 86400000),
+          completedAt: Date.now() - Math.floor(Math.random() * 86400000) + duration
+        });
+      }
+    }
+
+    // Refresh UI
+    async function refreshUI() {
+      try {
+        // Get filters
+        const filters = {
+          sessionId: filterSessionEl.value || undefined,
+          toolName: filterToolEl.value || undefined,
+          status: filterStatusEl.value || undefined,
+          limit: 50,
+          sortBy: 'startedAt',
+          sortOrder: 'desc'
+        };
+
+        // Get executions
+        const executions = await historyStore.getExecutions(filters);
+        renderExecutionList(executions);
+
+        // Update stats
+        const stats = await historyStore.getStats(filters);
+        updateStats(stats);
+
+        // Update filters dropdowns
+        await updateFilterOptions();
+
+        // Update charts
+        await updateCharts();
+
+      } catch (e) {
+        console.error('Refresh error:', e);
+      }
+    }
+
+    // Render execution list
+    function renderExecutionList(executions) {
+      document.getElementById('execution-count').textContent = `${executions.length} total`;
+
+      if (executions.length === 0) {
+        executionListEl.innerHTML = '<div class="text-gray-500 text-center py-8">No executions found</div>';
+        return;
+      }
+
+      executionListEl.innerHTML = executions.map(exec => {
+        const statusColor = exec.status === 'completed' ? 'bg-green-100 text-green-800' :
+                           exec.status === 'failed' ? 'bg-red-100 text-red-800' :
+                           'bg-yellow-100 text-yellow-800';
+        
+        const duration = exec.duration ? `${exec.duration}ms` : 'running';
+        
+        return `
+          <div class="timeline-item border-b p-3 hover:bg-gray-50 cursor-pointer" onclick="showDetail('${exec.executionId}')">
+            <div class="flex justify-between items-start">
+              <div>
+                <span class="font-medium text-gray-800">${exec.toolName}</span>
+                <span class="ml-2 px-2 py-0.5 rounded text-xs ${statusColor}">${exec.status}</span>
+              </div>
+              <span class="text-sm text-gray-500">${duration}</span>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">
+              ${new Date(exec.startedAt).toLocaleString()} • ${exec.sessionId}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Update stats display
+    function updateStats(stats) {
+      document.getElementById('stat-total').textContent = stats.totalExecutions;
+      document.getElementById('stat-success-rate').textContent = 
+        stats.totalExecutions > 0 
+          ? Math.round((stats.successfulExecutions / stats.totalExecutions) * 100) + '%'
+          : '0%';
+      document.getElementById('stat-avg-duration').textContent = stats.averageDuration + 'ms';
+      document.getElementById('stat-unique-tools').textContent = stats.uniqueTools;
+    }
+
+    // Update filter dropdown options
+    async function updateFilterOptions() {
+      const executions = await historyStore.getExecutions();
+      
+      // Get unique sessions and tools
+      const sessions = [...new Set(executions.map(e => e.sessionId))];
+      const tools = [...new Set(executions.map(e => e.toolName))];
+
+      // Update session filter
+      const currentSession = filterSessionEl.value;
+      filterSessionEl.innerHTML = '<option value="">All Sessions</option>' +
+        sessions.map(s => `<option value="${s}" ${s === currentSession ? 'selected' : ''}>${s}</option>`).join('');
+
+      // Update tool filter
+      const currentTool = filterToolEl.value;
+      filterToolEl.innerHTML = '<option value="">All Tools</option>' +
+        tools.map(t => `<option value="${t}" ${t === currentTool ? 'selected' : ''}>${t}</option>`).join('');
+    }
+
+    // Update charts
+    async function updateCharts() {
+      const executions = await historyStore.getExecutions();
+      
+      // Tool usage chart
+      const usage = calculateToolUsage(executions);
+      updateToolUsageChart(usage);
+      
+      // Timeline chart
+      updateTimelineChart(executions);
+    }
+
+    // Update tool usage chart
+    function updateToolUsageChart(usage) {
+      const ctx = document.getElementById('tool-usage-chart').getContext('2d');
+      
+      if (toolUsageChart) {
+        toolUsageChart.destroy();
+      }
+
+      if (usage.length === 0) {
+        return;
+      }
+
+      toolUsageChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: usage.map(u => u.toolName),
+          datasets: [{
+            data: usage.map(u => u.count),
+            backgroundColor: [
+              '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    // Update timeline chart
+    function updateTimelineChart(executions) {
+      const ctx = document.getElementById('timeline-chart').getContext('2d');
+      
+      if (timelineChart) {
+        timelineChart.destroy();
+      }
+
+      // Group by hour
+      const hourly = {};
+      executions.forEach(e => {
+        const hour = Math.floor(e.startedAt / 3600000) * 3600000;
+        if (!hourly[hour]) {
+          hourly[hour] = { total: 0, success: 0 };
+        }
+        hourly[hour].total++;
+        if (e.status === 'completed') {
+          hourly[hour].success++;
+        }
+      });
+
+      const sortedHours = Object.keys(hourly).sort();
+      
+      if (sortedHours.length === 0) {
+        return;
+      }
+
+      timelineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sortedHours.map(h => new Date(parseInt(h)).toLocaleTimeString()),
+          datasets: [{
+            label: 'Total',
+            data: sortedHours.map(h => hourly[h].total),
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true
+          }, {
+            label: 'Success',
+            data: sortedHours.map(h => hourly[h].success),
+            borderColor: '#10B981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // Show execution detail
+    window.showDetail = async (executionId) => {
+      const execution = await historyStore.getExecution(executionId);
+      if (!execution) return;
+
+      const detailContent = document.getElementById('detail-content');
+      
+      detailContent.innerHTML = `
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-sm text-gray-500">Execution ID</label>
+              <div class="font-mono text-sm">${execution.executionId}</div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500">Status</label>
+              <div class="font-medium">${execution.status}</div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500">Session</label>
+              <div>${execution.sessionId}</div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500">Tool</label>
+              <div>${execution.toolName}</div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500">Started</label>
+              <div>${new Date(execution.startedAt).toLocaleString()}</div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500">Duration</label>
+              <div>${execution.duration ? execution.duration + 'ms' : 'N/A'}</div>
+            </div>
+          </div>
+          
+          <div>
+            <label class="text-sm text-gray-500">Arguments</label>
+            <pre class="bg-gray-100 p-3 rounded text-sm mt-1 overflow-x-auto">${JSON.stringify(execution.arguments, null, 2)}</pre>
+          </div>
+          
+          ${execution.result ? `
+            <div>
+              <label class="text-sm text-gray-500">Result</label>
+              <pre class="bg-gray-100 p-3 rounded text-sm mt-1 overflow-x-auto">${JSON.stringify(execution.result, null, 2)}</pre>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      document.getElementById('detail-modal').classList.remove('hidden');
+      document.getElementById('detail-modal').classList.add('flex');
+    };
+
+    // Start
+    init();
+  </script>
+</body>
+</html>
